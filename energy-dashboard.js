@@ -33,3 +33,53 @@ export function renderRowsHTML(rows) {
     )
     .join('');
 }
+
+if (typeof HTMLElement !== 'undefined') {
+  class EnergyDashboard extends HTMLElement {
+    constructor() {
+      super();
+      this._hass = null;
+      this._initialized = false;
+    }
+
+    connectedCallback() {
+      if (this._initialized) return;
+      this._initialized = true;
+      this.style.cssText = 'display:block;height:100vh;background:#0d0f14;color:#e2e8f0;font-family:Inter,sans-serif;overflow:auto;';
+      this.innerHTML = `
+        <style>
+          #financial { padding: 16px; }
+          h2 { font-weight: 600; margin: 0 0 12px; }
+          table { border-collapse: collapse; width: 100%; max-width: 640px; }
+          th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-family: 'JetBrains Mono', monospace; font-size: 14px; }
+          th { color: #6b7280; font-family: Inter, sans-serif; font-weight: 500; }
+        </style>
+        <div id="financial">
+          <h2>Financial &mdash; Savings by Tariff Period</h2>
+          <table>
+            <thead>
+              <tr><th>Period</th><th>Today Saving</th><th>Today Arbitrage</th><th>Lifetime Saving</th><th>Lifetime Arbitrage</th></tr>
+            </thead>
+            <tbody id="financial-body"></tbody>
+          </table>
+        </div>
+      `;
+      this._render();
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      if (!this._initialized) this.connectedCallback();
+      this._render();
+    }
+
+    _render() {
+      const tbody = this.querySelector('#financial-body');
+      if (!tbody) return;
+      const rows = buildFinancialRows(this._hass?.states || {});
+      tbody.innerHTML = renderRowsHTML(rows);
+    }
+  }
+
+  customElements.define('energy-dashboard', EnergyDashboard);
+}

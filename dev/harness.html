@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Energy Dashboard Harness</title>
+  </head>
+  <body style="margin:0;">
+    <energy-dashboard></energy-dashboard>
+    <script type="module">
+      import '../energy-dashboard.js';
+
+      const fakeHass = {
+        states: {
+          'sensor.saving_today_night_boost': { state: '0.85' },
+          'sensor.arbitrage_today_night_boost': { state: '-0.6' },
+          'sensor.total_saving_night_boost': { state: '32.10' },
+          'sensor.total_arbitrage_night_boost': { state: '-9.40' },
+
+          'sensor.saving_today_night': { state: '0.20' },
+          'sensor.arbitrage_today_night': { state: '0.05' },
+          'sensor.total_saving_night': { state: '8.00' },
+          'sensor.total_arbitrage_night': { state: '1.10' },
+
+          'sensor.saving_today_day': { state: '1.40' },
+          'sensor.arbitrage_today_day': { state: '0.30' },
+          'sensor.total_saving_day': { state: '55.00' },
+          'sensor.total_arbitrage_day': { state: '4.30' },
+
+          'sensor.saving_today_peak': { state: '0.95' },
+          'sensor.arbitrage_today_peak': { state: '0.50' },
+          'sensor.total_saving_peak': { state: '18.60' },
+          'sensor.total_arbitrage_peak': { state: '2.90' },
+        },
+      };
+
+      document.querySelector('energy-dashboard').hass = fakeHass;
+    </script>
+  </body>
+</html>
