@@ -883,6 +883,92 @@ template:
                            - states('sensor.total_energy_saving') | float(0) %}
           {{ ([remaining, 0] | max / (states('sensor.average_daily_saving') | float(1) * 365)) | round(2) }}
 
+      # Avoided cost split by source. The combined figure hides that solar can be
+      # a large share of it -- measured 2026-09-05, 42% on a day the owner
+      # described solar as "minor". Splitting it answers "what is the solar
+      # actually worth" without a separate mental model.
+      #
+      # Solar is valued at the rate of the period it was generated in, so
+      # midday output is worth the day rate and late output the peak rate.
+      # sensor.solar_value_today values all solar at the day rate instead and is
+      # therefore the less accurate of the two; prefer this one.
+      #
+      # CAVEAT: if solar ever charges the battery, that energy is counted here
+      # once as solar and again as discharge. This system charges at night from
+      # the grid, so the overlap is currently zero -- but it would silently
+      # overstate the saving if daytime charging began.
+      - name: "Avoided Cost Battery Today"
+        unique_id: avoided_cost_battery_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:battery-arrow-down
+        state: >
+          {% set nb = states('sensor.battery_discharge_daily_night_boost') | float(0) * (states('input_number.rate_night_boost') | float(0.1123)) %}
+          {% set ni = states('sensor.battery_discharge_daily_night') | float(0) * (states('input_number.rate_night') | float(0.2778)) %}
+          {% set da = states('sensor.battery_discharge_daily_day') | float(0) * (states('input_number.rate_day') | float(0.3578)) %}
+          {% set pe = states('sensor.battery_discharge_daily_peak') | float(0) * (states('input_number.rate_peak') | float(0.4615)) %}
+          {{ (nb + ni + da + pe) | round(2) }}
+
+      - name: "Avoided Cost Solar Today"
+        unique_id: avoided_cost_solar_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:solar-power-variant
+        state: >
+          {% set nb = states('sensor.solar_daily_night_boost') | float(0) * (states('input_number.rate_night_boost') | float(0.1123)) %}
+          {% set ni = states('sensor.solar_daily_night') | float(0) * (states('input_number.rate_night') | float(0.2778)) %}
+          {% set da = states('sensor.solar_daily_day') | float(0) * (states('input_number.rate_day') | float(0.3578)) %}
+          {% set pe = states('sensor.solar_daily_peak') | float(0) * (states('input_number.rate_peak') | float(0.4615)) %}
+          {{ (nb + ni + da + pe) | round(2) }}
+
+      - name: "Avoided Cost Battery Yesterday"
+        unique_id: avoided_cost_battery_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:battery-arrow-down
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {% set nb = state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) * (states('input_number.rate_night_boost') | float(0.1123)) %}
+          {% set ni = state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) * (states('input_number.rate_night') | float(0.2778)) %}
+          {% set da = state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) * (states('input_number.rate_day') | float(0.3578)) %}
+          {% set pe = state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) * (states('input_number.rate_peak') | float(0.4615)) %}
+          {{ (nb + ni + da + pe) | round(2) }}
+
+      - name: "Avoided Cost Solar Yesterday"
+        unique_id: avoided_cost_solar_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:solar-power-variant
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {% set nb = state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0) * (states('input_number.rate_night_boost') | float(0.1123)) %}
+          {% set ni = state_attr('sensor.solar_daily_night', 'last_period') | float(0) * (states('input_number.rate_night') | float(0.2778)) %}
+          {% set da = state_attr('sensor.solar_daily_day', 'last_period') | float(0) * (states('input_number.rate_day') | float(0.3578)) %}
+          {% set pe = state_attr('sensor.solar_daily_peak', 'last_period') | float(0) * (states('input_number.rate_peak') | float(0.4615)) %}
+          {{ (nb + ni + da + pe) | round(2) }}
+
       # ─── CURRENT PERIOD / RATE ──────────────────────────────────
       # Single source of truth for "which tariff period is it now". Read
       # straight off the select that the utility meters themselves follow,
@@ -1089,4 +1175,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.4.3
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.5.0

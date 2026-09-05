@@ -341,7 +341,8 @@ export function buildBatteryStatus(states) {
 // The money story as an arithmetic chain rather than one opaque total: what
 // the battery/solar energy would have cost, minus what was paid to store it.
 const MONEY_CHAIN = [
-  ['Avoided cost', 'sensor.energy_avoided_cost_today', 'sensor.energy_avoided_cost_yesterday', '+'],
+  ['Avoided by battery', 'sensor.avoided_cost_battery_today', 'sensor.avoided_cost_battery_yesterday', '+'],
+  ['Avoided by solar', 'sensor.avoided_cost_solar_today', 'sensor.avoided_cost_solar_yesterday', '+'],
   ['Battery charge cost', 'sensor.battery_charge_cost_today', 'sensor.battery_charge_cost_yesterday', '\u2212'],
   ['Net saving', 'sensor.energy_saving_today', 'sensor.energy_saving_yesterday', '='],
 ];
@@ -702,7 +703,7 @@ export function renderFinancialHTML(states) {
     <section class="card">
       <h3>How the saving is made</h3>
       ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
-      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it. Take off what you paid to charge, and what is left is the saving.</p>
+      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it &mdash; so midday solar is valued at the day rate and late-afternoon solar at the peak rate. Take off what you paid to charge, and what is left is the saving.</p>
     </section>
     <section class="card">
       <h3>Detail</h3>

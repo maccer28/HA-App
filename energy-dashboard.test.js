@@ -428,16 +428,20 @@ test('the Live tab stays simple: no money on it, money lives on Financial', () =
   assert.match(fin, /Net saving/);
 });
 
-test('buildMoneyChain lays the saving out as avoided - charge = net', () => {
+test('buildMoneyChain shows battery and solar separately, then nets them', () => {
   const chain = buildMoneyChain({
-    'sensor.energy_avoided_cost_today': { state: '3.56' },
+    'sensor.avoided_cost_battery_today': { state: '2.18' },
+    'sensor.avoided_cost_solar_today': { state: '1.38' },
     'sensor.battery_charge_cost_today': { state: '1.20' },
     'sensor.energy_saving_today': { state: '2.36' },
   });
-  assert.deepEqual(chain.map(r => r.op), ['+', '\u2212', '=']);
-  assert.deepEqual(chain.map(r => r.today), ['€3.56', '€1.20', '€2.36']);
+  assert.deepEqual(chain.map(r => r.label), [
+    'Avoided by battery', 'Avoided by solar', 'Battery charge cost', 'Net saving',
+  ]);
+  assert.deepEqual(chain.map(r => r.op), ['+', '+', '\u2212', '=']);
   // the chain must actually add up, or the display is lying
-  assert.equal((3.56 - 1.20).toFixed(2), '2.36');
+  assert.equal((2.18 + 1.38 - 1.20).toFixed(2), '2.36');
+  assert.equal(chain[3].today, '€2.36');
   for (const r of buildMoneyChain({})) assert.equal(r.today, DASH);
 });
 
