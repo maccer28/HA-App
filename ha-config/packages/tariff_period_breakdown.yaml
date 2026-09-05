@@ -219,9 +219,14 @@ input_number:
     mode: box
   battery_capacity_kwh:
     name: "Battery Usable Capacity"
-    # Lithtech TR8500WX: 51.2V x 314Ah = 16.076 kWh. Note the inverter is
-    # configured with a rated capacity of 50Ah, which does not match the pack --
-    # worth resolving, since Solis uses it for SOC estimation.
+    # Lithtech TR8500WX: 51.2V x 314Ah = 16.076 kWh. Used ONLY to turn lifetime
+    # charge energy into equivalent full cycles; nothing else depends on it.
+    #
+    # Do not confuse this with number.solis_s6_eh1p_battery_rated_capacity,
+    # which sits at 50 Ah on the inverter. That field is dead config: it applies
+    # only to batteries without BMS communication. This pack reports SOC to the
+    # inverter over RS485, so the inverter uses the BMS figures and ignores it.
+    # Leave it alone.
     initial: 16.076
     min: 0.1
     max: 1000
