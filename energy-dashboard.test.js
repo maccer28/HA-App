@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   buildFinancialRows,
   renderRowsHTML,
@@ -631,4 +632,18 @@ test('the lifetime saving tile prefixes the currency and counts its own days', (
   const noDays = buildPerformance({ 'sensor.total_energy_saving': { state: '139.33' } });
   assert.equal(noDays[0].text, '€139.33');
   assert.doesNotMatch(noDays[0].hint, /null|NaN|undefined/);
+});
+
+test('every grid container lets its children shrink below content width', () => {
+  // Regression: .panel is a grid, and grid items default to min-width:auto, so a
+  // wide nowrap table grew its card past the viewport. The root clips with
+  // overflow-x:hidden, so the card was silently cut off on a phone rather than
+  // scrolling. Assert the CSS that prevents it, since there is no DOM here.
+  const css = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  for (const container of ['.panel > *', '.grid4 > *', '.tiles > *', '.pairs > div']) {
+    assert.ok(
+      new RegExp(container.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*min-width:\\s*0').test(css),
+      `${container} must set min-width: 0`
+    );
+  }
 });

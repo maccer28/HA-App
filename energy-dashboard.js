@@ -772,6 +772,12 @@ if (typeof HTMLElement !== 'undefined') {
 
           .panel { padding: 12px; display: grid; gap: 12px; }
           .panel[hidden] { display: none; }
+          /* Grid items default to min-width:auto, so a wide nowrap table inside
+             a card grows the card past the viewport and .scroll never gets to
+             contain it -- the root's overflow-x:hidden then clips it silently.
+             Every grid/flex container below needs its children allowed to
+             shrink below their content width. */
+          .panel > * { min-width: 0; }
 
           .hero, .card {
             background: #141922; border: 1px solid rgba(255,255,255,0.06);
@@ -817,6 +823,7 @@ if (typeof HTMLElement !== 'undefined') {
           }
 
           .grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
+          .grid4 > * { min-width: 0; }
           .node { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
           .node .k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
           .node .d {
@@ -830,16 +837,18 @@ if (typeof HTMLElement !== 'undefined') {
           }
 
           .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 14px; }
+          .tiles > * { min-width: 0; }
           .tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
           .tile .k { color: #7d8797; font: 500 10px Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
           .tile .v {
             font: 600 clamp(19px, 5.5vw, 23px) ui-monospace, 'JetBrains Mono', monospace;
             font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: #e6ebf2;
-            overflow-wrap: anywhere;
+            overflow-wrap: anywhere; min-width: 0;
           }
           .tile .h { color: #4d5666; font-size: 10.5px; line-height: 1.35; }
 
           .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+          .soc-bar { min-width: 0; }
           .soc-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
           .soc-bar i { display: block; height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.6s ease; }
           .soc b {
@@ -848,6 +857,7 @@ if (typeof HTMLElement !== 'undefined') {
           }
 
           .pairs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; margin: 0; }
+          .pairs > div { min-width: 0; }
           .pairs > div {
             display: flex; justify-content: space-between; gap: 10px;
             padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
