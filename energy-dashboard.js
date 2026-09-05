@@ -315,8 +315,35 @@ export function statisticsRequest(statisticIds, days, types, now = new Date()) {
   };
 }
 
+// HA returns `start` as epoch milliseconds, not an ISO string. Slicing it as
+// text produced raw epoch numbers on the chart axis. Days are bucketed in local
+// time by the recorder, so format in local time to match.
 function dayKey(row) {
-  return String(row.start).slice(0, 10);
+  const raw = row?.start;
+  const d = typeof raw === 'number' ? new Date(raw) : new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return String(raw).slice(0, 10);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatDayLabel(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : day;
+}
+
+// Days before the model change recorded saving GROSS -- without subtracting
+// what was paid to charge the battery. battery_charge_cost_today has statistics
+// covering the same period, so the whole series can be put on a net basis
+// rather than left with an artificial cliff on the changeover date.
+export function correctedNetSaving(savingRows, chargeRows, cutoffDay = MODEL_CHANGE_DATE) {
+  const charge = new Map(dailyMaxima(chargeRows).map(p => [p.day, p.value]));
+  return dailyMaxima(savingRows).map(({ day, value }) => ({
+    day,
+    value: day < cutoffDay ? Number((value - (charge.get(day) ?? 0)).toFixed(2)) : value,
+    corrected: day < cutoffDay,
+  }));
 }
 
 // utility_meter statistics carry a monotonically rising `sum` that continues
@@ -475,7 +502,7 @@ export function renderHistoryHTML(states) {
     <section class="card">
       <h3>Net saving per day &mdash; last 30 days</h3>
       <div class="chart"><canvas id="chart-saving"></canvas></div>
-      <p class="note warn" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded under the previous model, which did not subtract the cost of charging the battery and overstated the daily figure by roughly half. Expect a step down on that date &mdash; it is a change in how the number is calculated, not in how the system performed.</p>
+      <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, without subtracting what was paid to charge the battery. They are corrected here by subtracting that day&rsquo;s recorded charge cost, so the whole series is on the same net basis &mdash; the stored history itself is unchanged.</p>
     </section>
     <p class="note" id="history-note">Loading statistics&hellip;</p>
   `;
@@ -632,7 +659,12 @@ if (typeof HTMLElement !== 'undefined') {
           );
         }
 
-        const savingAligned = alignSeries({ 'Net saving': dailyMaxima(money?.['sensor.energy_saving_today']) });
+        const savingAligned = alignSeries({
+          'Net saving': correctedNetSaving(
+            money?.['sensor.energy_saving_today'],
+            money?.['sensor.battery_charge_cost_today']
+          ),
+        });
         if (savingAligned.days.length) {
           this._drawBars('chart-saving', savingAligned, '\u20ac');
           const warn = this.querySelector('#saving-caveat');
@@ -653,7 +685,7 @@ if (typeof HTMLElement !== 'undefined') {
     _chartBase(labels, datasets, unit) {
       return {
         type: 'bar',
-        data: { labels, datasets },
+        data: { labels: labels.map(formatDayLabel), datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,

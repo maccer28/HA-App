@@ -21,6 +21,8 @@ import {
   dailyDeltas,
   dailyMaxima,
   alignSeries,
+  formatDayLabel,
+  correctedNetSaving,
   TABS,
 } from './energy-dashboard.js';
 
@@ -418,4 +420,51 @@ test('alignSeries gaps a missing day rather than shifting later days left', () =
   assert.deepEqual(days, ['2026-09-01', '2026-09-02', '2026-09-03']);
   assert.deepEqual(datasets.Day, [3, null, 5]);
   assert.deepEqual(datasets.Peak, [null, 1, null]);
+});
+
+test('statistics timestamps are epoch milliseconds, not ISO strings', () => {
+  // Regression: HA returns `start` as a number. Slicing it as text put raw
+  // epoch values like "1785970800" on the chart axis.
+  const rows = [{ start: 1785970800000, max: 4.84 }];
+  const [point] = dailyMaxima(rows);
+  assert.match(point.day, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(point.day, new Date(1785970800000).getFullYear() + '-' +
+    String(new Date(1785970800000).getMonth() + 1).padStart(2, '0') + '-' +
+    String(new Date(1785970800000).getDate()).padStart(2, '0'));
+
+  // ISO strings must still work, and dailyDeltas shares the same parsing
+  assert.equal(dailyMaxima([{ start: '2026-09-05T00:00:00', max: 1 }])[0].day, '2026-09-05');
+});
+
+test('formatDayLabel renders a readable axis label', () => {
+  assert.equal(formatDayLabel('2026-09-05'), '5 Sep');
+  assert.equal(formatDayLabel('2026-12-31'), '31 Dec');
+  assert.equal(formatDayLabel('nonsense'), 'nonsense');
+});
+
+test('correctedNetSaving puts pre-change days on a net basis', () => {
+  const saving = [
+    { start: '2026-09-03T00:00:00', max: 5.77 },
+    { start: '2026-09-04T00:00:00', max: 3.79 },
+    { start: '2026-09-05T00:00:00', max: 2.41 },
+  ];
+  const charge = [
+    { start: '2026-09-03T00:00:00', max: 0.99 },
+    { start: '2026-09-04T00:00:00', max: 1.20 },
+    { start: '2026-09-05T00:00:00', max: 0.78 },
+  ];
+  const out = correctedNetSaving(saving, charge, '2026-09-05');
+
+  // gross figures before the cutoff get the charge cost taken off
+  assert.deepEqual(out[0], { day: '2026-09-03', value: 4.78, corrected: true });
+  assert.deepEqual(out[1], { day: '2026-09-04', value: 2.59, corrected: true });
+  // the cutoff day onward is already net and must be left alone
+  assert.deepEqual(out[2], { day: '2026-09-05', value: 2.41, corrected: false });
+});
+
+test('correctedNetSaving leaves a day alone when no charge cost was recorded', () => {
+  const out = correctedNetSaving(
+    [{ start: '2026-08-01T00:00:00', max: 3.0 }], [], '2026-09-05'
+  );
+  assert.equal(out[0].value, 3.0, 'a missing charge cost must not be treated as a correction');
 });
