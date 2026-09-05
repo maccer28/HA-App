@@ -53,9 +53,46 @@ meters' `last_period` for anything priced; see "Derived helpers" below. There is
 no inverter-side solar sensor (solar is a separate AC-coupled inverter on
 Modbus slave 1).
 
-`sensor.solar_today` / `sensor.solar_today_previous_period` are UI helpers of
-unverified unit. **Nothing references them any more** — use
-sensor.solar_today_kwh / sensor.solar_yesterday_kwh.
+Verified live against the HA API on 2026-09-05:
+
+- `sensor.solar_today` **is in Wh** (`unit_of_measurement: Wh`) — the long-held
+  assumption is correct. It is a utility_meter helper; its own `last_period`
+  attribute holds yesterday's solar.
+- **`sensor.solar_today_previous_period` does not exist.** The host templates
+  referencing it resolve to `unknown` → `float(0)`, so yesterday's solar has
+  been silently counted as **zero** — understating, not overstating. Nothing in
+  this repo references it any more; use sensor.solar_yesterday_kwh.
+- `sensor.solar_today`'s source reads 142.40 kWh lifetime while
+  `sensor.solar_total_yield` reads 366.48 kWh — two different solar
+  measurements. Daily deltas look consistent, but if solar figures ever look
+  off, this discrepancy is the first thing to check.
+
+## HA API access
+The host **is** reachable from this repo at `https://ha.ma33er.xyz` (the LAN IP
+192.168.1.240 is not). A long-lived token lives in `.ha_token` (gitignored):
+
+```bash
+TOKEN=$(tr -d '\r\n' < .ha_token)
+curl -s -H "Authorization: Bearer $TOKEN" https://ha.ma33er.xyz/api/states
+```
+
+Use read-only `GET` unless the user has asked for a change — the same API can
+call services and set states.
+
+## Meter source granularity (accuracy caveat)
+The `sensor.solis_s6_eh1p_total_*` counters the utility meters use are
+**integers stepping in whole kWh** (1500, 521, 486). Two consequences:
+
+1. A meter reads `unknown` until its source ticks, so after a restart the
+   tariff buckets stay blank for a while — `sensor.energy_cost_today` collapses
+   to roughly the standing charge alone until then. `sensor.solar_daily_*`
+   avoids this because `solar_total_yield` has 2 dp and changes constantly.
+2. Each 1 kWh tick is attributed entirely to whichever tariff was active when
+   the counter crossed, so the per-period split is coarse — worst at the
+   Night Boost/Night boundary, where the rates differ 3x.
+
+`sensor.solis_s6_eh1p_today_*` are 0.1 kWh (10x finer) but reset daily; the
+power sensors update every ~20s and would suit a Riemann-sum integration.
 
 ### Financial (template sensors in configuration.yaml)
 - sensor.electricity_rate — current EUR/kWh
@@ -235,8 +272,9 @@ and delete:
   package's `sensor.current_tariff_period` and nothing references it.
 
 Then copy the package to the HA host's `config/packages/` directory and
-restart HA (this repo has no network access to the HA host, so this copy
-step is manual). Afterwards, check the HA log for `Duplicate unique_id` —
+restart HA. The copy is manual: the REST API (see "HA API access" above) can
+read state and call services but cannot write config files, so it can verify a
+deploy but not perform one. Afterwards, check the HA log for `Duplicate unique_id` —
 any hit means one of the blocks above is still present, and the old
 inaccurate sensor is the one being used.
 
