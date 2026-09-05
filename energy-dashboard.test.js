@@ -409,19 +409,21 @@ test('renderLiveHTML names the active tariff period and tints it', () => {
   assert.match(unknown, /—/);
 });
 
-test('the Live tab stays simple: no money on it, money lives on Financial', () => {
+test('Live carries the headline figures; the ledger stays on Financial', () => {
   const live = renderLiveHTML(liveStates);
-  // The current rate is live data and belongs here; running totals do not.
+  // The rate in force and the lifetime saving are headline facts and belong here.
   assert.match(live, /0\.3233/, 'the rate in force now is live data');
-  for (const total of ['312.45', '48.20', '2.31', '1.79']) {
-    assert.ok(!live.includes(total), `Live tab should not carry the running total ${total}`);
-  }
-  // Performance ratios are "how well is it doing", which belongs on Live.
-  // The money ledger -- cost, saving, arbitrage, avoided cost -- does not.
   assert.match(live, /Round trip/, 'performance ratios belong on Live');
-  assert.doesNotMatch(live, /Avoided cost|Net saving|Arbitrage today/, 'the money ledger belongs on Financial');
+  assert.match(live, /Saved since install/, 'the headline saving belongs on Live');
+  assert.match(live, /class="soc-bar"/, 'Live shows battery state of charge');
   assert.match(live, /class="ribbon"/, 'the tariff ribbon is the Live hero');
-  assert.match(live, /class="soc-bar"/, 'Live tab should show battery state of charge');
+
+  // The ledger -- the working that produces those headlines -- does not.
+  assert.doesNotMatch(live, /Avoided by (battery|solar)|Battery charge cost|Cost without battery/,
+    'the money ledger belongs on Financial');
+  for (const ledgerOnly of ['2.31', '4.10', '0.55']) {
+    assert.ok(!live.includes(ledgerOnly), `Live should not carry the ledger figure ${ledgerOnly}`);
+  }
 
   const fin = renderFinancialHTML(liveStates);
   assert.match(fin, /€312\.45/);
@@ -607,10 +609,26 @@ test('buildPerformance renders each ratio with its own precision and a reading h
   });
   const by = Object.fromEntries(rows.map(r => [r.label, r.text]));
   assert.equal(by['Round trip'], '93.5 %');
+  assert.equal(rows[0].label, 'Saved since install', 'the headline number leads');
   assert.equal(by['Effective rate'], '0.0817 €/kWh');
   assert.equal(by['Payback'], '2.95 yr');
   assert.ok(rows.every(r => r.hint && r.hint.length), 'every tile explains how to read it');
 
   // an unavailable ratio must dash, never read as 0% or 100%
   for (const r of buildPerformance({})) assert.equal(r.text, DASH);
+});
+
+test('the lifetime saving tile prefixes the currency and counts its own days', () => {
+  const rows = buildPerformance({
+    'sensor.total_energy_saving': { state: '139.33' },
+    'sensor.days_since_install': { state: '54' },
+  });
+  const tile = rows[0];
+  assert.equal(tile.text, '€139.33', 'currency goes in front, not after');
+  assert.match(tile.hint, /over 54 days/, 'the day count comes from HA, not a hardcoded date');
+
+  // with no day count it must still read sensibly rather than "over null days"
+  const noDays = buildPerformance({ 'sensor.total_energy_saving': { state: '139.33' } });
+  assert.equal(noDays[0].text, '€139.33');
+  assert.doesNotMatch(noDays[0].hint, /null|NaN|undefined/);
 });

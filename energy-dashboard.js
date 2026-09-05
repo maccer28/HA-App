@@ -494,6 +494,13 @@ export function alignSeries(seriesByKey) {
 // [label, entity, decimals, unit, hint] — hint is the one-line reading guide,
 // because a ratio without a reference point is just a number.
 const PERFORMANCE = [
+  // Leads, because it is the number the whole system exists to produce. The
+  // hint is a function so the day count comes from HA rather than being a
+  // hardcoded install date that quietly goes stale.
+  ['Saved since install', 'sensor.total_energy_saving', 2, '€', st => {
+    const days = numOrNull(st, 'sensor.days_since_install');
+    return days === null ? 'net of charging cost' : `over ${days.toFixed(0)} days, net of charging`;
+  }],
   ['Round trip', 'sensor.battery_round_trip_efficiency', 1, '%', 'energy out vs in, lifetime'],
   ['Effective rate', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'all-in, vs €0.3578 day rate'],
   ['Self sufficiency', 'sensor.self_sufficiency_today', 1, '%', 'load met without importing'],
@@ -504,11 +511,15 @@ const PERFORMANCE = [
 ];
 
 export function buildPerformance(states) {
-  return PERFORMANCE.map(([label, entityId, dp, unit, hint]) => ({
-    label,
-    hint,
-    text: fmtNum(numOrNull(states, entityId), dp, unit),
-  }));
+  return PERFORMANCE.map(([label, entityId, dp, unit, hint]) => {
+    const value = numOrNull(states, entityId);
+    return {
+      label,
+      hint: typeof hint === 'function' ? hint(states) : hint,
+      // Currency reads €139.33, not "139.33 €"
+      text: unit === '€' ? fmtEuro(value) : fmtNum(value, dp, unit),
+    };
+  });
 }
 
 // ─── Tariff ribbon (the signature element) ────────────────────────────
