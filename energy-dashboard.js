@@ -596,6 +596,10 @@ export function renderLiveHTML(states, now = new Date()) {
     )
     .join('');
 
+  const perf = buildPerformance(states)
+    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
+    .join('');
+
   return `
     <section class="hero">
       <span class="eyebrow" style="color:${accent}">${r.label}</span>
@@ -605,6 +609,10 @@ export function renderLiveHTML(states, now = new Date()) {
     <section class="card">
       <h3>Power</h3>
       <div class="grid4">${nodes}</div>
+    </section>
+    <section class="card">
+      <h3>Performance</h3>
+      <div class="tiles">${perf}</div>
     </section>
     <section class="card">
       <h3>Battery</h3>

@@ -416,7 +416,10 @@ test('the Live tab stays simple: no money on it, money lives on Financial', () =
   for (const total of ['312.45', '48.20', '2.31', '1.79']) {
     assert.ok(!live.includes(total), `Live tab should not carry the running total ${total}`);
   }
-  assert.doesNotMatch(live, /Saving|Arbitrage|Avoided/, 'financial labels belong on the Financial tab');
+  // Performance ratios are "how well is it doing", which belongs on Live.
+  // The money ledger -- cost, saving, arbitrage, avoided cost -- does not.
+  assert.match(live, /Round trip/, 'performance ratios belong on Live');
+  assert.doesNotMatch(live, /Avoided cost|Net saving|Arbitrage today/, 'the money ledger belongs on Financial');
   assert.match(live, /class="ribbon"/, 'the tariff ribbon is the Live hero');
   assert.match(live, /class="soc-bar"/, 'Live tab should show battery state of charge');
 
