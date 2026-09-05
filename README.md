@@ -28,6 +28,18 @@ a native web component. See `CLAUDE.md` for full technical details.
    - the template sensor block named `Grid Import Rate Breakdown` — it is an
      exact duplicate of the package's `sensor.current_tariff_period` and
      nothing references it.
+   - the four yesterday blocks `Energy Cost Yesterday`,
+     `Energy Cost Without Battery Yesterday`, `Arbitrage Profit Yesterday`
+     and `Battery Charge Cost Yesterday`, plus `Solar Value Yesterday` —
+     same merge problem. These guessed yesterday's tariff split from a single
+     daily total (`min(imported, 3.0)` as night boost, 10% of the remainder
+     as peak, all battery charging at the night boost rate). The package
+     computes them from each utility meter's `last_period` attribute, which
+     holds the actual per-tariff totals for the previous cycle, so yesterday
+     is now as accurate as today.
+
+     **Keep** `Energy Saving Yesterday` — it derives purely from the two cost
+     sensors above and needs no change.
    - the existing `panel_custom` block for `url_path: energy-dashboard` /
      `module_url: /local/energy-dashboard/energy-dashboard.js` — the
      package registers its own `panel_custom` entry at the same
@@ -49,13 +61,39 @@ a native web component. See `CLAUDE.md` for full technical details.
    the one in use.
 9. An "Energy" item should appear in the HA sidebar.
 
-### Outstanding: the `sensor.solar_today` unit
+### Where yesterday's numbers come from
+
+Each `utility_meter` tariff sensor exposes a `last_period` attribute holding its
+previous completed cycle. The meters here are `cycle: daily`, so `last_period`
+*is* yesterday — read directly, with no history query and no recorder
+dependency, and restored across restarts.
+
+The inverter also reports its own yesterday totals
+(`sensor.solis_s6_eh1p_yesterday_*`). Those are authoritative but are single
+daily numbers with **no tariff split**, so they cannot price yesterday against a
+four-rate tariff — that limitation is what forced the old heuristics. There is
+no inverter-side solar sensor at all (solar is a separate AC-coupled inverter on
+Modbus slave 1), so for yesterday's solar the meters are the only source.
+
+`sensor.tariff_meter_drift_yesterday` compares the two: the four grid-import
+`last_period` values summed, minus the inverter's own yesterday import. It
+should sit at ~0. A persistent non-zero value means the meters lost energy
+(HA down across a tariff boundary, a restart mid-cycle) and yesterday's figures
+are under-counting by that many kWh.
+
+### The `sensor.solar_today` unit — retired, not outstanding
 
 `sensor.solar_total_yield` is confirmed genuinely kWh — the unit is declared
 directly on its Modbus input register. Everything derived from it
-(`sensor.solar_daily_*`, `sensor.solar_today_kwh`, `sensor.saving_today_*`,
-`sensor.energy_cost_without_battery_today`, and the lifetime accumulators fed
-by the nightly rollup) is therefore free of unit ambiguity.
+(`sensor.solar_daily_*`, `sensor.solar_today_kwh`, `sensor.solar_yesterday_kwh`,
+`sensor.saving_today_*`, the cost sensors, and the lifetime accumulators fed by
+the nightly rollup) is therefore free of unit ambiguity.
+
+`sensor.solar_today` is a *different* sensor — a UI helper, not defined in any
+YAML — whose Wh/kWh unit was never verified. Nothing in this package or in the
+panel references it or `sensor.solar_today_previous_period` any more, so the
+ambiguity no longer affects any displayed figure. Once the step 4 deletions are
+made, both are unused and can be removed as helpers if you want.
 
 `sensor.solar_today` is a *different* sensor — a UI helper, not defined in any
 YAML — and its unit is still unverified. Two host templates disagree about it:

@@ -335,6 +335,129 @@ template:
           {% set p  = (states('sensor.grid_import_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
+      # ─── YESTERDAY (from utility_meter `last_period`) ───────────
+      # Every utility_meter tariff sensor stores its previous completed cycle
+      # in a `last_period` attribute (a stringified Decimal, hence the
+      # | float(0)), and each tariff sensor keeps its own independently. The
+      # meters here are cycle: daily, so `last_period` *is* yesterday —
+      # available directly, with no history query and no recorder dependency,
+      # and restored across HA restarts.
+      #
+      # This replaces the heuristics in the host's configuration.yaml, which
+      # had only a single daily total to work from and so guessed the tariff
+      # split (min(imported, 3.0) as night boost, 10% of the remainder as
+      # peak, all battery charging at the night boost rate). Yesterday is now
+      # computed exactly like today.
+      #
+      # It also removes the last consumer of
+      # sensor.solar_today_previous_period, retiring the sensor.solar_today
+      # Wh/kWh ambiguity entirely rather than working around it.
+      #
+      # Note: these read 0 until the first midnight after this package is
+      # installed, because no cycle has completed yet. They self-correct
+      # after one night.
+      #
+      # sensor.energy_saving_yesterday is deliberately NOT redefined here —
+      # it derives purely from the two cost sensors below, so the existing
+      # definition in configuration.yaml keeps working untouched.
+      - name: "Energy Cost Yesterday"
+        unique_id: energy_cost_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:currency-eur
+        state: >
+          {% set standing = 0.9164 %}
+          {% set nb = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
+          {% set n  = state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) * 0.2438 %}
+          {% set d  = state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) * 0.3233 %}
+          {% set p  = state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) * 0.4508 %}
+          {{ (nb + n + d + p + standing) | round(2) }}
+
+      - name: "Energy Cost Without Battery Yesterday"
+        unique_id: energy_cost_without_battery_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:currency-eur
+        state: >
+          {% set standing = 0.9164 %}
+          {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
+          {% set n  = (state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
+          {% set d  = (state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
+          {% set p  = (state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {{ (nb + n + d + p + standing) | round(2) }}
+
+      - name: "Arbitrage Profit Yesterday"
+        unique_id: arbitrage_profit_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:trending-up
+        state: >
+          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
+          {% set n  = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0)) * 0.2438 %}
+          {% set d  = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0)) * 0.3233 %}
+          {% set p  = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {{ (nb + n + d + p) | round(2) }}
+
+      - name: "Battery Charge Cost Yesterday"
+        unique_id: battery_charge_cost_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:battery-charging
+        state: >
+          {% set nb = state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
+          {% set n  = state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) * 0.2438 %}
+          {% set d  = state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) * 0.3233 %}
+          {% set p  = state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) * 0.4508 %}
+          {{ (nb + n + d + p) | round(2) }}
+
+      - name: "Solar Yesterday kWh"
+        unique_id: solar_yesterday_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        state: >
+          {{ (state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.solar_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.solar_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) | round(2) }}
+
+      - name: "Solar Value Yesterday"
+        unique_id: solar_value_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+          {{ (states('sensor.solar_yesterday_kwh') | float(0) * 0.3233) | round(2) }}
+
+      # Cross-check on the meters. The inverter reports its own yesterday
+      # totals (sensor.solis_s6_eh1p_yesterday_*), which are authoritative but
+      # carry no tariff split — that missing split is exactly why the cost
+      # sensors above use last_period instead of these. Comparing the two
+      # catches a meter that lost energy (HA down across a tariff boundary, a
+      # restart mid-cycle) instead of letting it silently understate
+      # yesterday's cost. Expected ~0; a persistent non-zero value means
+      # yesterday's figures are under-counting by that many kWh.
+      - name: "Tariff Meter Drift Yesterday"
+        unique_id: tariff_meter_drift_yesterday
+        unit_of_measurement: "kWh"
+        state_class: measurement
+        icon: mdi:scale-balance
+        state: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ (metered - inverter) | round(3) }}
+        attributes:
+          metered: >
+            {{ (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+              + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+              + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+              + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0)) | round(3) }}
+          inverter: >
+            {{ states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) | round(3) }}
+
       # ─── CURRENT PERIOD / RATE ──────────────────────────────────
       # Single source of truth for "which tariff period is it now". Read
       # straight off the select that the utility meters themselves follow,

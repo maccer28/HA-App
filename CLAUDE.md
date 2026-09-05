@@ -39,12 +39,23 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 - sensor.solis_s6_eh1p_today_energy_fed_into_grid — kWh
 - sensor.solis_s6_eh1p_household_load_today_energy — kWh
 
-### Energy yesterday
+### Energy yesterday (inverter-reported — totals only, NO tariff split)
 - sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid
+- sensor.solis_s6_eh1p_yesterday_energy_fed_into_grid
 - sensor.solis_s6_eh1p_yesterday_battery_charge_energy
 - sensor.solis_s6_eh1p_yesterday_battery_discharge_energy
 - sensor.solis_s6_eh1p_yesterday_energy_consumption
-- sensor.solar_today_previous_period — yesterday solar kWh
+
+These are authoritative for daily totals but are single numbers with no tariff
+breakdown, so they **cannot** price yesterday against the four-rate tariff —
+that limitation is what forced the old `min(imported, 3.0)` heuristics. Use the
+meters' `last_period` for anything priced; see "Derived helpers" below. There is
+no inverter-side solar sensor (solar is a separate AC-coupled inverter on
+Modbus slave 1).
+
+`sensor.solar_today` / `sensor.solar_today_previous_period` are UI helpers of
+unverified unit. **Nothing references them any more** — use
+sensor.solar_today_kwh / sensor.solar_yesterday_kwh.
 
 ### Financial (template sensors in configuration.yaml)
 - sensor.electricity_rate — current EUR/kWh
@@ -79,6 +90,18 @@ No token required. Runs in HA's JS context with full access to `hass` object.
   `sensor.solar_daily_*` tariff buckets (source: the confirmed-kWh
   `sensor.solar_total_yield`). Use this instead of `sensor.solar_today`;
   it exists precisely so no consumer has to remember a `/1000`.
+- sensor.solar_yesterday_kwh — same, from those buckets' `last_period`.
+- sensor.tariff_meter_drift_yesterday — summed grid-import `last_period` minus
+  the inverter's own yesterday import. Should be ~0; persistent non-zero means
+  the meters lost energy and yesterday under-counts by that many kWh.
+
+**Yesterday comes from `last_period`, not from history.** Every utility_meter
+tariff sensor exposes a `last_period` attribute (a stringified Decimal — always
+`| float(0)` it) holding its previous completed cycle. These meters are
+`cycle: daily`, so `last_period` is yesterday, per tariff, with no history
+query and no recorder dependency, restored across restarts. All the
+`*_yesterday` financial sensors in the package are built on it. Note it reads 0
+until the first midnight after install.
 
 ### Totals (cumulative, ever-increasing)
 - sensor.solar_total_yield — lifetime solar kWh
