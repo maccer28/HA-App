@@ -36,14 +36,13 @@ utility_meter:
       - day
       - peak
 
-  # NOTE: sensor.solar_today is documented elsewhere (CLAUDE.md) as declared
-  # kWh but actually reporting Wh. sensor.solar_total_yield is a distinct
-  # Modbus register also declared kWh directly, but it is NOT verified to be
-  # free of the same mislabeling — do not assume it's correct without
-  # checking. If verification shows this is actually Wh, divide by 1000 in
-  # the 4 `solar_daily_*` reads inside the saving_today_* sensors and in
-  # energy_cost_without_battery_today below (or better: point this
-  # utility_meter's source at a new kWh-normalizing template sensor instead).
+  # sensor.solar_total_yield is confirmed genuinely kWh: the unit is declared
+  # directly on its Modbus input register in the host's configuration.yaml
+  # (slave 1, address 72, unit_of_measurement "kWh"). It is a different sensor
+  # from sensor.solar_today, which is a UI helper and carries the Wh/kWh
+  # ambiguity noted in CLAUDE.md — everything downstream of this meter is free
+  # of that ambiguity, which is why sensor.solar_today_kwh below is derived
+  # from these tariff buckets rather than from sensor.solar_today.
   solar_daily:
     source: sensor.solar_total_yield
     cycle: daily
@@ -335,6 +334,64 @@ template:
           {% set d  = (states('sensor.grid_import_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
           {% set p  = (states('sensor.grid_import_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
           {{ (nb + n + d + p + standing) | round(2) }}
+
+      # ─── CURRENT PERIOD / RATE ──────────────────────────────────
+      # Single source of truth for "which tariff period is it now". Read
+      # straight off the select that the utility meters themselves follow,
+      # rather than recomputing now().hour a second time — that keeps the
+      # boundary logic in exactly one place (the Tariff Period Sync
+      # automation below) and makes a stalled sync visible on the dashboard
+      # instead of hiding it behind a correct-looking clock.
+      - name: "Current Tariff Period"
+        unique_id: current_tariff_period
+        icon: mdi:clock-outline
+        state: "{{ states('select.grid_import_daily') }}"
+
+      # Replaces the hour-based template of the same unique_id in the host's
+      # configuration.yaml — that block must be deleted there, see README.
+      # `availability` deliberately makes an unsynced select surface as
+      # unavailable rather than silently reporting the day rate.
+      - name: "Electricity Rate"
+        unique_id: electricity_rate_yaml
+        unit_of_measurement: "EUR/kWh"
+        state_class: measurement
+        icon: mdi:currency-eur
+        availability: >
+          {{ states('sensor.current_tariff_period') in ['night_boost', 'night', 'day', 'peak'] }}
+        state: >
+          {% set rates = {'night_boost': 0.0824, 'night': 0.2438, 'day': 0.3233, 'peak': 0.4508} %}
+          {{ rates[states('sensor.current_tariff_period')] }}
+
+      # ─── SOLAR TODAY (UNAMBIGUOUS kWh) ──────────────────────────
+      # Summed from the four solar_daily_* tariff buckets, whose source is
+      # the confirmed-kWh sensor.solar_total_yield. The four selects are
+      # always switched together by Tariff Period Sync, so the buckets
+      # partition the day without overlap and this sum is today's total.
+      # Exists so no consumer has to remember the sensor.solar_today Wh
+      # gotcha — there is deliberately no /1000 anywhere in this chain.
+      - name: "Solar Today kWh"
+        unique_id: solar_today_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        state: >
+          {{ (states('sensor.solar_daily_night_boost') | float(0)
+            + states('sensor.solar_daily_night') | float(0)
+            + states('sensor.solar_daily_day') | float(0)
+            + states('sensor.solar_daily_peak') | float(0)) | round(2) }}
+
+      # Replaces the sensor.solar_today-based template of the same unique_id
+      # in the host's configuration.yaml — that block must be deleted there.
+      # sensor.total_energy_saving folds this into the lifetime accumulator,
+      # so sourcing it from the unambiguous sensor above keeps a unit error
+      # from becoming permanent.
+      - name: "Solar Value Today"
+        unique_id: solar_value_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:solar-power
+        state: >
+          {{ (states('sensor.solar_today_kwh') | float(0) * 0.3233) | round(2) }}
 
 automation:
   - alias: "Tariff Period Sync"
