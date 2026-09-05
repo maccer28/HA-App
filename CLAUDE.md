@@ -227,13 +227,36 @@ panel_custom:
 - Fonts: Inter (UI), JetBrains Mono (numbers/data)
 
 ## Dashboard tabs
-Built so far: **Live** and **Financial** (the tariff-period table). Solar &
-Battery and Totals are not implemented yet; neither is any history/chart code.
+Three tabs, in this order. The guiding split: **Live answers "what is happening
+now", History answers "what happened", Financial answers "what did it save me".**
 
-1. **Live** ✅ — power flow (solar/grid/battery/home nodes), rate now with period highlight, today/yesterday/totals financial grid, system stats (temp/voltage/current/grid V/Hz/status), energy today grid (no bars — just numbers)
-2. **Solar & Battery** — 24h power flow area chart, 7d daily energy bar chart, 24h SOC area chart, 24h battery voltage line, 24h battery current area, 24h inverter temp area
-3. **Financial** — total saving growth line chart (60d), daily breakdown bar chart (30d: cost/no-battery/saving/arbitrage/charge cost/solar value), daily saving trend (30d), avg daily saving line (30d)
-4. **Totals** — 8 summary tiles (total saving, proj annual, avg/day, days running, total arbitrage, solar total, total charged, current rate), 30d cost breakdown bar chart
+1. **Live** — deliberately simple. Power flow (solar/grid/battery/home), battery
+   state of charge, the rate in force now with the active tariff period
+   highlighted, and inverter health. **No running totals** — the current rate is
+   live data and belongs here, but cost/saving/arbitrage figures do not. A test
+   enforces this.
+2. **History** — energy today, then charts over 30 days: grid import stacked by
+   tariff period, and net saving per day. Sourced from **long-term statistics**,
+   not raw history (see below).
+3. **Financial** — leads with the saving as an arithmetic chain
+   (avoided cost − battery charge cost = net saving), then today/yesterday/
+   lifetime detail, then the per-tariff-period table.
+
+### Why History uses statistics, not history
+`recorder` runs at its default `purge_keep_days: 10` — verified live, 15 days
+back returns zero rows. So `history/history_during_period` cannot serve the
+30-day views. `recorder/statistics_during_period` can: HA keeps hourly and daily
+rollups indefinitely. `dailyDeltas()` converts a utility meter's rising `sum`
+into per-day energy; `dailyMaxima()` takes the end-of-day value of a
+`measurement` sensor.
+
+### The financial model
+Saving is **net**: what the battery/solar energy would have cost at the rate in
+force when it was used, minus what was paid to charge. The earlier model omitted
+the charge cost and overstated the daily figure by ~51%. Since this system
+charges cheap at night and discharges by day (and solar is minor), the charge
+term is the dominant correction — Night Boost saving is legitimately negative,
+Day/Peak positive, and they net out across the day.
 
 ## Chart library
 Use Chart.js 4.4.1 from cdnjs:
