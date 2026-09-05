@@ -857,16 +857,24 @@ panel_custom:
     sidebar_title: Energy
     sidebar_icon: mdi:lightning-bolt
     url_path: energy-dashboard
-    # No cache-busting query needed: a Cloudflare Cache Rule on this zone
-    # bypasses cache for /hacsfiles/*, so the origin is hit every time and a
-    # HACS update takes effect on its own.
+    # BUMP THIS ON EVERY RELEASE to match the version installed via HACS.
     #
-    # Verified 2026-09-05: before the rule the bare URL served a stale 3048-byte
-    # file for hours across several HACS updates and restarts; after it, the
-    # same URL returned the current 29875-byte build immediately.
+    # A CDN in front of this host caches /hacsfiles/*.js keyed on the full URL,
+    # so a novel URL fetches from origin while a previously-seen one is frozen.
+    # Without the query, HACS reports the new version, the correct file sits on
+    # disk, and the panel still renders the old build -- through restarts and
+    # browser hard-refreshes alike, because neither can clear a CDN edge cache.
     #
-    # If that Cloudflare rule is ever removed, this silently breaks again --
-    # HACS will report the new version while the panel keeps rendering the old
-    # one. The fix then is to re-add a ?v=<version> here and bump it on every
-    # release, which is what this line used to do.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js
+    # To test whether the CDN is still caching (and whether a bypass rule is
+    # actually matching), compare the bare URL against a random query:
+    #
+    #   curl -s -H "Authorization: Bearer $TOKEN" \
+    #     'https://<host>/hacsfiles/HA-App/energy-dashboard.js' | wc -c
+    #   curl -s -H "Authorization: Bearer $TOKEN" \
+    #     'https://<host>/hacsfiles/HA-App/energy-dashboard.js?cb=1' | wc -c
+    #
+    # Different sizes mean the bare URL is cached and this ?v= is doing real
+    # work. Identical sizes mean the CDN is bypassing correctly and the query
+    # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
+    # behind, with a `cache-control: max-age=28211` TTL counting down.
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.3.1

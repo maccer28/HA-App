@@ -141,8 +141,10 @@ export function buildPowerFlow(states) {
     }
   }
 
-  const directional = (value, direction) =>
-    value === null ? DASH : `${fmtPower(Math.abs(value))} ${direction}`;
+  // Magnitude and direction are kept apart so the panel can set the direction
+  // as a caption. Trailing it inline made "357 W Discharging" wrap onto two
+  // lines in a narrow column.
+  const mag = value => (value === null ? DASH : fmtPower(Math.abs(value)));
 
   return [
     {
@@ -159,7 +161,7 @@ export function buildPowerFlow(states) {
       color: grid === null ? COLORS.dim : grid >= 0 ? COLORS.gridImport : COLORS.gridExport,
       value: grid,
       direction: gridDirection,
-      text: directional(grid, gridDirection),
+      text: mag(grid),
     },
     {
       key: 'battery',
@@ -167,7 +169,7 @@ export function buildPowerFlow(states) {
       color: battery === null ? COLORS.dim : COLORS.battery,
       value: battery,
       direction: batteryDirection,
-      text: directional(battery, batteryDirection),
+      text: mag(battery),
     },
     {
       key: 'home',
@@ -750,6 +752,10 @@ if (typeof HTMLElement !== 'undefined') {
           .grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
           .node { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
           .node .k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+          .node .d {
+            color: #7d8797; font: 500 10px Inter, system-ui, sans-serif;
+            letter-spacing: 0.08em; text-transform: uppercase; min-height: 13px;
+          }
           .node .v {
             font: 600 clamp(17px, 5vw, 21px) ui-monospace, 'JetBrains Mono', monospace;
             font-variant-numeric: tabular-nums; letter-spacing: -0.01em;

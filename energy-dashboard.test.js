@@ -182,9 +182,9 @@ test('buildPowerFlow returns the four nodes with grid and battery direction', ()
 
   assert.deepEqual(nodes.map(n => n.key), ['solar', 'grid', 'battery', 'home']);
   assert.equal(nodes[0].text, '2.45 kW');
-  assert.equal(nodes[1].text, '1.20 kW Export');
+  assert.equal(nodes[1].text, '1.20 kW');
   assert.equal(nodes[1].direction, 'Export');
-  assert.equal(nodes[2].text, '800 W Charging');
+  assert.equal(nodes[2].text, '800 W');
   assert.equal(nodes[2].direction, 'Charging');
   assert.equal(nodes[3].text, '450 W');
 });
@@ -192,11 +192,11 @@ test('buildPowerFlow returns the four nodes with grid and battery direction', ()
 test('buildPowerFlow reports grid import for a positive net and export for a negative one', () => {
   const importing = buildPowerFlow({ 'sensor.solis_s6_eh1p_grid_power_net': { state: '1200' } });
   assert.equal(importing[1].direction, 'Import');
-  assert.equal(importing[1].text, '1.20 kW Import');
+  assert.equal(importing[1].text, '1.20 kW');
 
   const exporting = buildPowerFlow({ 'sensor.solis_s6_eh1p_grid_power_net': { state: '-1200' } });
   assert.equal(exporting[1].direction, 'Export');
-  assert.equal(exporting[1].text, '1.20 kW Export');
+  assert.equal(exporting[1].text, '1.20 kW');
 });
 
 test('buildPowerFlow reads battery direction from the dedicated charge/discharge sensors', () => {
@@ -208,21 +208,21 @@ test('buildPowerFlow reads battery direction from the dedicated charge/discharge
     'sensor.solis_s6_eh1p_battery_discharge_power': { state: '127' },
   });
   assert.equal(discharging[2].direction, 'Discharging');
-  assert.equal(discharging[2].text, '127 W Discharging');
+  assert.equal(discharging[2].text, '127 W');
 
   const charging = buildPowerFlow({
     'sensor.solis_s6_eh1p_battery_charge_power': { state: '800' },
     'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
   });
   assert.equal(charging[2].direction, 'Charging');
-  assert.equal(charging[2].text, '800 W Charging');
+  assert.equal(charging[2].text, '800 W');
 
   const idle = buildPowerFlow({
     'sensor.solis_s6_eh1p_battery_charge_power': { state: '0' },
     'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
   });
   assert.equal(idle[2].direction, 'Idle');
-  assert.equal(idle[2].text, '0 W Idle');
+  assert.equal(idle[2].text, '0 W');
 });
 
 test('buildPowerFlow dashes the battery when neither charge nor discharge is reported', () => {
