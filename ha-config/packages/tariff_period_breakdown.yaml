@@ -132,6 +132,28 @@ input_number:
     step: 0.01
     unit_of_measurement: "EUR"
     mode: box
+  # Site facts used by the performance sensors. Kept as helpers rather than
+  # hardcoded so they can be corrected without editing this file.
+  system_cost:
+    name: "System Cost"
+    initial: 3500
+    min: 0
+    max: 1000000
+    step: 1
+    unit_of_measurement: "EUR"
+    mode: box
+  battery_capacity_kwh:
+    name: "Battery Usable Capacity"
+    # Lithtech TR8500WX: 51.2V x 314Ah = 16.076 kWh. Note the inverter is
+    # configured with a rated capacity of 50Ah, which does not match the pack --
+    # worth resolving, since Solis uses it for SOC estimation.
+    initial: 16.076
+    min: 0.1
+    max: 1000
+    step: 0.001
+    unit_of_measurement: "kWh"
+    mode: box
+
   total_arbitrage_peak:
     name: "Total Arbitrage - Peak"
     initial: 0
@@ -674,6 +696,113 @@ template:
           {% set pe = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
           {{ (nb + ni + da + pe) | round(2) }}
 
+      # ─── PERFORMANCE ────────────────────────────────────────────
+      # Ratios that say whether the system is doing its job, as opposed to how
+      # much energy moved. Each guards its own divisor: a ratio with nothing to
+      # divide by is unavailable, never 0% or 100%.
+      - name: "Battery Round Trip Efficiency"
+        unique_id: battery_round_trip_efficiency
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:battery-sync
+        availability: "{{ states('sensor.solis_s6_eh1p_total_battery_charge_energy') | float(0) > 0 }}"
+        state: >
+          {{ ((states('sensor.solis_s6_eh1p_total_battery_discharge_energy') | float(0)
+             / states('sensor.solis_s6_eh1p_total_battery_charge_energy') | float(1)) * 100) | round(1) }}
+
+      # Deliberately lifetime-only as a headline, but the daily figure is useful
+      # for spotting a bad day. Expect it to swing either side of the lifetime
+      # number purely from the battery ending the day fuller or emptier than it
+      # started -- a single day is not an efficiency measurement.
+      - name: "Battery Round Trip Efficiency Today"
+        unique_id: battery_round_trip_efficiency_today
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:battery-sync
+        availability: "{{ states('sensor.solis_s6_eh1p_today_battery_charge_energy') | float(0) > 0 }}"
+        state: >
+          {{ ((states('sensor.solis_s6_eh1p_today_battery_discharge_energy') | float(0)
+             / states('sensor.solis_s6_eh1p_today_battery_charge_energy') | float(1)) * 100) | round(1) }}
+
+      # All-in: includes the standing charge, so this is what a kWh actually
+      # costs once the daily fee is spread over what was used. Compare against
+      # the 0.3233 day rate to see whether the battery is beating the tariff.
+      - name: "Effective Unit Rate Today"
+        unique_id: effective_unit_rate_today
+        unit_of_measurement: "EUR/kWh"
+        state_class: measurement
+        icon: mdi:tag-text
+        availability: "{{ states('sensor.solis_s6_eh1p_household_load_today_energy') | float(0) > 0 }}"
+        state: >
+          {{ (states('sensor.energy_cost_today') | float(0)
+             / states('sensor.solis_s6_eh1p_household_load_today_energy') | float(1)) | round(4) }}
+
+      # Share of the house's demand met by the battery and solar rather than by
+      # importing at the moment of use.
+      - name: "Self Sufficiency Today"
+        unique_id: self_sufficiency_today
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:home-lightning-bolt
+        availability: "{{ states('sensor.solis_s6_eh1p_household_load_today_energy') | float(0) > 0 }}"
+        state: >
+          {% set load = states('sensor.solis_s6_eh1p_household_load_today_energy') | float(1) %}
+          {% set own = states('sensor.solis_s6_eh1p_today_battery_discharge_energy') | float(0)
+                     + states('sensor.solar_today_kwh') | float(0) %}
+          {{ [ (own / load * 100), 100 ] | min | round(1) }}
+
+      # The worst-priced energy. Lower is better; zero is the goal.
+      - name: "Peak Import Share Today"
+        unique_id: peak_import_share_today
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:transmission-tower
+        availability: >
+          {{ (states('sensor.grid_import_daily_night_boost') | float(0)
+            + states('sensor.grid_import_daily_night') | float(0)
+            + states('sensor.grid_import_daily_day') | float(0)
+            + states('sensor.grid_import_daily_peak') | float(0)) > 0 }}
+        state: >
+          {% set total = states('sensor.grid_import_daily_night_boost') | float(0)
+                       + states('sensor.grid_import_daily_night') | float(0)
+                       + states('sensor.grid_import_daily_day') | float(0)
+                       + states('sensor.grid_import_daily_peak') | float(1) %}
+          {{ ((states('sensor.grid_import_daily_peak') | float(0) / total) * 100) | round(1) }}
+
+      # How much of the bill is the fixed daily fee -- the part no amount of
+      # optimisation can touch. At EUR 0.9164/day it is roughly EUR 334 a year.
+      - name: "Standing Charge Share Today"
+        unique_id: standing_charge_share_today
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:calendar-clock
+        availability: "{{ states('sensor.energy_cost_today') | float(0) > 0 }}"
+        state: >
+          {{ ((0.9164 / states('sensor.energy_cost_today') | float(1)) * 100) | round(1) }}
+
+      - name: "Battery Equivalent Full Cycles"
+        unique_id: battery_equivalent_full_cycles
+        state_class: total_increasing
+        icon: mdi:battery-clock
+        availability: "{{ states('input_number.battery_capacity_kwh') | float(0) > 0 }}"
+        state: >
+          {{ (states('sensor.solis_s6_eh1p_total_battery_charge_energy') | float(0)
+             / states('input_number.battery_capacity_kwh') | float(1)) | round(1) }}
+
+      # Straight-line projection from the running average. It assumes the future
+      # looks like the past, which it will not exactly -- treat it as an
+      # order-of-magnitude answer, not a date.
+      - name: "Payback Years Remaining"
+        unique_id: payback_years_remaining
+        unit_of_measurement: "years"
+        state_class: measurement
+        icon: mdi:cash-clock
+        availability: "{{ states('sensor.average_daily_saving') | float(0) > 0 }}"
+        state: >
+          {% set remaining = states('input_number.system_cost') | float(0)
+                           - states('sensor.total_energy_saving') | float(0) %}
+          {{ ([remaining, 0] | max / (states('sensor.average_daily_saving') | float(1) * 365)) | round(2) }}
+
       # ─── CURRENT PERIOD / RATE ──────────────────────────────────
       # Single source of truth for "which tariff period is it now". Read
       # straight off the select that the utility meters themselves follow,
@@ -877,4 +1006,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.3.3
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.4.0

@@ -11,6 +11,7 @@ import {
   buildRateNow,
   buildEnergyTable,
   buildPeriodTotals,
+  buildPerformance,
   ribbonSegments,
   buildTariffRibbon,
   batteryCycleSeries,
@@ -19,6 +20,7 @@ import {
   renderTabsHTML,
   renderLiveHTML,
   renderFinancialHTML,
+  renderHistoryHTML,
   buildBatteryStatus,
   buildMoneyChain,
   statisticsRequest,
@@ -269,7 +271,7 @@ test('buildEnergyTable covers every real energy flow across today/yesterday/life
     'Solar', 'Grid import', 'Grid export', 'Battery charged',
     'Battery discharged', 'Home load', 'Backup load',
   ]);
-  assert.equal(rows[0].today, '8.42 kWh');
+  assert.equal(rows[0].today, '8.42', 'figures are bare; the unit is in the column header');
 
   // Backup load has no yesterday sensor; it must dash, not fabricate a zero
   assert.equal(rows[6].yesterday, DASH);
@@ -285,7 +287,7 @@ test('buildPeriodTotals exposes month and year figures', () => {
     'sensor.solis_s6_eh1p_household_load_month_energy': { state: '71' },
     'sensor.solis_s6_eh1p_household_load_year_energy': { state: '1198' },
   });
-  assert.deepEqual(rows[0], { label: 'Home load', month: '71.00 kWh', year: '1198.00 kWh' });
+  assert.deepEqual(rows[0], { label: 'Home load', month: '71.00', year: '1198.00' });
   assert.equal(rows[1].month, DASH);
 });
 
@@ -580,4 +582,28 @@ test('only the figure columns right-align; label columns stay left', () => {
   // the detail table's first column is its only label column
   const detailHead = fin.slice(fin.indexOf('Detail'));
   assert.match(detailHead, /<th>Metric<\/th>/);
+});
+
+test('table cells never butt together', () => {
+  // Regression: numeric cells had padding-right:0 and no left padding, so on a
+  // narrow screen headers rendered as "TODAYYESTERDAY" and values as "kWh1500.77".
+  const html = renderHistoryHTML({});
+  assert.match(html, /Today<i>kWh<\/i>/, 'the unit belongs in the header, not every cell');
+  assert.doesNotMatch(html, /\d kWh<\/td>/, 'cells carry bare figures');
+});
+
+test('buildPerformance renders each ratio with its own precision and a reading hint', () => {
+  const rows = buildPerformance({
+    'sensor.battery_round_trip_efficiency': { state: '93.5' },
+    'sensor.effective_unit_rate_today': { state: '0.0817' },
+    'sensor.payback_years_remaining': { state: '2.95' },
+  });
+  const by = Object.fromEntries(rows.map(r => [r.label, r.text]));
+  assert.equal(by['Round trip'], '93.5 %');
+  assert.equal(by['Effective rate'], '0.0817 €/kWh');
+  assert.equal(by['Payback'], '2.95 yr');
+  assert.ok(rows.every(r => r.hint && r.hint.length), 'every tile explains how to read it');
+
+  // an unavailable ratio must dash, never read as 0% or 100%
+  for (const r of buildPerformance({})) assert.equal(r.text, DASH);
 });

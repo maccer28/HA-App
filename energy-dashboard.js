@@ -242,8 +242,15 @@ const ENERGY_FLOWS = [
   ],
 ];
 
+// Figures are bare; the unit lives in the column header. Repeating "kWh" in
+// every cell cost about four characters per column, which on a 360px screen is
+// the difference between a table that fits and one that overflows.
 export function buildEnergyTable(states) {
-  const cell = id => (id === null ? DASH : fmtEnergy(numOrNull(states, id)));
+  const cell = id => {
+    if (id === null) return DASH;
+    const v = numOrNull(states, id);
+    return v === null ? DASH : v.toFixed(2);
+  };
   return ENERGY_FLOWS.map(([label, today, yesterday, lifetime]) => ({
     label,
     today: cell(today),
@@ -258,10 +265,14 @@ const PERIOD_TOTALS = [
 ];
 
 export function buildPeriodTotals(states) {
+  const cell = id => {
+    const v = numOrNull(states, id);
+    return v === null ? DASH : v.toFixed(2);
+  };
   return PERIOD_TOTALS.map(([label, month, year]) => ({
     label,
-    month: fmtEnergy(numOrNull(states, month)),
-    year: fmtEnergy(numOrNull(states, year)),
+    month: cell(month),
+    year: cell(year),
   }));
 }
 
@@ -479,6 +490,26 @@ export function alignSeries(seriesByKey) {
   return { days, datasets };
 }
 
+// [label, entity, decimals, unit, hint] — hint is the one-line reading guide,
+// because a ratio without a reference point is just a number.
+const PERFORMANCE = [
+  ['Round trip', 'sensor.battery_round_trip_efficiency', 1, '%', 'energy out vs in, lifetime'],
+  ['Effective rate', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'all-in, vs €0.3233 day rate'],
+  ['Self sufficiency', 'sensor.self_sufficiency_today', 1, '%', 'load met without importing'],
+  ['Peak import', 'sensor.peak_import_share_today', 1, '%', 'share bought at the worst rate'],
+  ['Standing charge', 'sensor.standing_charge_share_today', 1, '%', 'of today\u2019s bill, unavoidable'],
+  ['Full cycles', 'sensor.battery_equivalent_full_cycles', 1, '', 'equivalent, lifetime'],
+  ['Payback', 'sensor.payback_years_remaining', 2, 'yr', 'remaining at the current rate'],
+];
+
+export function buildPerformance(states) {
+  return PERFORMANCE.map(([label, entityId, dp, unit, hint]) => ({
+    label,
+    hint,
+    text: fmtNum(numOrNull(states, entityId), dp, unit),
+  }));
+}
+
 // ─── Tariff ribbon (the signature element) ────────────────────────────
 // The day drawn as proportional price bands. The schedule comes from
 // sensor.current_tariff_period's `hours` attribute so the boundaries live in
@@ -612,11 +643,11 @@ export function renderHistoryHTML(states) {
   return `
     <section class="card">
       <h3>Energy</h3>
-      ${tableHTML(['Flow', 'Today', 'Yesterday', 'Lifetime'], energy)}
+      ${tableHTML(['Flow', 'Today<i>kWh</i>', 'Yesterday<i>kWh</i>', 'Lifetime<i>kWh</i>'], energy)}
     </section>
     <section class="card">
       <h3>Longer run</h3>
-      ${tableHTML(['Flow', 'This month', 'This year'], totals)}
+      ${tableHTML(['Flow', 'This month<i>kWh</i>', 'This year<i>kWh</i>'], totals)}
     </section>
     <section class="card">
       <h3>Grid import by tariff <em>30 days</em></h3>
@@ -651,7 +682,15 @@ export function renderFinancialHTML(states) {
     )
     .join('');
 
+  const perf = buildPerformance(states)
+    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
+    .join('');
+
   return `
+    <section class="card">
+      <h3>Performance</h3>
+      <div class="tiles">${perf}</div>
+    </section>
     <section class="card">
       <h3>How the saving is made</h3>
       ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
@@ -770,6 +809,16 @@ if (typeof HTMLElement !== 'undefined') {
             overflow-wrap: anywhere;
           }
 
+          .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 14px; }
+          .tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+          .tile .k { color: #7d8797; font: 500 10px Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
+          .tile .v {
+            font: 600 clamp(19px, 5.5vw, 23px) ui-monospace, 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: #e6ebf2;
+            overflow-wrap: anywhere;
+          }
+          .tile .h { color: #4d5666; font-size: 10.5px; line-height: 1.35; }
+
           .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
           .soc-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
           .soc-bar i { display: block; height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.6s ease; }
@@ -789,16 +838,22 @@ if (typeof HTMLElement !== 'undefined') {
             font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere;
           }
 
-          .scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: thin; }
-          table { border-collapse: collapse; width: 100%; min-width: 320px; }
-          th, td { text-align: left; padding: 9px 10px 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
+          .scroll {
+            overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: thin;
+            /* fades at the edges so it is obvious the table scrolls */
+            -webkit-overflow-scrolling: touch;
+            mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+          }
+          table { border-collapse: collapse; width: 100%; }
+          th, td { text-align: left; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
           thead th {
             color: #4d5666; font: 600 10px Inter, system-ui, sans-serif;
-            letter-spacing: 0.12em; text-transform: uppercase; padding-bottom: 8px;
+            letter-spacing: 0.1em; text-transform: uppercase; padding-bottom: 8px; vertical-align: bottom;
           }
-          tbody th { font: 500 13px Inter, system-ui, sans-serif; color: #b9c2d0; }
+          thead th i { font-style: normal; letter-spacing: 0.04em; opacity: 0.6; margin-left: 4px; }
+          tbody th { font: 500 13px Inter, system-ui, sans-serif; color: #b9c2d0; padding-right: 12px; }
           td.num, th.num {
-            text-align: right; padding-right: 0;
+            text-align: right; padding-left: 20px;
             font: 500 13px ui-monospace, 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
           }
           thead th.num { font-family: Inter, system-ui, sans-serif; }
@@ -819,6 +874,7 @@ if (typeof HTMLElement !== 'undefined') {
             .hero, .card { padding: 20px; }
             .grid4 { grid-template-columns: repeat(4, 1fr); }
             .pairs { grid-template-columns: repeat(3, 1fr); }
+            .tiles { grid-template-columns: repeat(4, 1fr); }
             .scroll { margin: 0 -20px; padding: 0 20px; }
             .chart { height: 260px; }
           }
