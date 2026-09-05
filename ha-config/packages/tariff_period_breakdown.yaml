@@ -29,7 +29,7 @@
 # is the Wh-denominated sensor.solar_today helper.
 utility_meter:
   grid_import_daily:
-    source: sensor.solis_s6_eh1p_today_energy_imported_from_grid
+    source: sensor.solis_s6_eh1p_meter_total_active_energy_from_grid
     cycle: daily
     tariffs:
       - night_boost
@@ -75,7 +75,11 @@ input_number:
   total_saving_night_boost:
     name: "Total Saving - Night Boost"
     initial: 0
-    min: 0
+    # Negative: a period can legitimately have net-negative saving (Night Boost
+    # is pure spend -- energy goes IN, none comes out). Clamping at 0 would
+    # silently discard the cost side of the arbitrage, same bug as the
+    # total_arbitrage_* helpers had.
+    min: -100000
     max: 100000
     step: 0.01
     unit_of_measurement: "EUR"
@@ -83,7 +87,7 @@ input_number:
   total_saving_night:
     name: "Total Saving - Night"
     initial: 0
-    min: 0
+    min: -100000
     max: 100000
     step: 0.01
     unit_of_measurement: "EUR"
@@ -91,7 +95,7 @@ input_number:
   total_saving_day:
     name: "Total Saving - Day"
     initial: 0
-    min: 0
+    min: -100000
     max: 100000
     step: 0.01
     unit_of_measurement: "EUR"
@@ -99,7 +103,7 @@ input_number:
   total_saving_peak:
     name: "Total Saving - Peak"
     initial: 0
-    min: 0
+    min: -100000
     max: 100000
     step: 0.01
     unit_of_measurement: "EUR"
@@ -145,76 +149,80 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:piggy-bank
-        # Algebraically cost_without - cost_with reduces to
-        # (discharged + solar) * rate (the imported term cancels); the
-        # long form is kept deliberately to make the "vs. no battery"
-        # derivation explicit, not because `imported` is needed for the
-        # final result.
+        # NET saving for this period: what the discharged + solar energy saved
+        # at this period's rate, MINUS what was paid to put energy into the
+        # battery during this period. The charge term matters enormously for a
+        # charge-cheap/use-later setup: omitting it inflated the daily figure
+        # by the whole charge cost (measured 2026-09-05: EUR 3.31 reported vs
+        # EUR 2.11 actual). Expect this to be negative during Night Boost
+        # (charging) and positive during Day/Peak (discharging) -- the two
+        # sides are the arbitrage spread, and they net out across the day.
         state: >
           {% set rate = 0.0824 %}
-          {% set imported = states('sensor.grid_import_daily_night_boost') | float(0) %}
+          {% set charged = states('sensor.battery_charge_daily_night_boost') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night_boost') | float(0) %}
           {% set solar = states('sensor.solar_daily_night_boost') | float(0) %}
-          {% set cost_with = imported * rate %}
-          {% set cost_without = (imported + discharged + solar) * rate %}
-          {{ (cost_without - cost_with) | round(2) }}
+          {{ ((discharged + solar - charged) * rate) | round(2) }}
 
       - name: "Saving Today - Night"
         unique_id: saving_today_night
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:piggy-bank
-        # Algebraically cost_without - cost_with reduces to
-        # (discharged + solar) * rate (the imported term cancels); the
-        # long form is kept deliberately to make the "vs. no battery"
-        # derivation explicit, not because `imported` is needed for the
-        # final result.
+        # NET saving for this period: what the discharged + solar energy saved
+        # at this period's rate, MINUS what was paid to put energy into the
+        # battery during this period. The charge term matters enormously for a
+        # charge-cheap/use-later setup: omitting it inflated the daily figure
+        # by the whole charge cost (measured 2026-09-05: EUR 3.31 reported vs
+        # EUR 2.11 actual). Expect this to be negative during Night Boost
+        # (charging) and positive during Day/Peak (discharging) -- the two
+        # sides are the arbitrage spread, and they net out across the day.
         state: >
           {% set rate = 0.2438 %}
-          {% set imported = states('sensor.grid_import_daily_night') | float(0) %}
+          {% set charged = states('sensor.battery_charge_daily_night') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night') | float(0) %}
           {% set solar = states('sensor.solar_daily_night') | float(0) %}
-          {% set cost_with = imported * rate %}
-          {% set cost_without = (imported + discharged + solar) * rate %}
-          {{ (cost_without - cost_with) | round(2) }}
+          {{ ((discharged + solar - charged) * rate) | round(2) }}
 
       - name: "Saving Today - Day"
         unique_id: saving_today_day
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:piggy-bank
-        # Algebraically cost_without - cost_with reduces to
-        # (discharged + solar) * rate (the imported term cancels); the
-        # long form is kept deliberately to make the "vs. no battery"
-        # derivation explicit, not because `imported` is needed for the
-        # final result.
+        # NET saving for this period: what the discharged + solar energy saved
+        # at this period's rate, MINUS what was paid to put energy into the
+        # battery during this period. The charge term matters enormously for a
+        # charge-cheap/use-later setup: omitting it inflated the daily figure
+        # by the whole charge cost (measured 2026-09-05: EUR 3.31 reported vs
+        # EUR 2.11 actual). Expect this to be negative during Night Boost
+        # (charging) and positive during Day/Peak (discharging) -- the two
+        # sides are the arbitrage spread, and they net out across the day.
         state: >
           {% set rate = 0.3233 %}
-          {% set imported = states('sensor.grid_import_daily_day') | float(0) %}
+          {% set charged = states('sensor.battery_charge_daily_day') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_day') | float(0) %}
           {% set solar = states('sensor.solar_daily_day') | float(0) %}
-          {% set cost_with = imported * rate %}
-          {% set cost_without = (imported + discharged + solar) * rate %}
-          {{ (cost_without - cost_with) | round(2) }}
+          {{ ((discharged + solar - charged) * rate) | round(2) }}
 
       - name: "Saving Today - Peak"
         unique_id: saving_today_peak
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:piggy-bank
-        # Algebraically cost_without - cost_with reduces to
-        # (discharged + solar) * rate (the imported term cancels); the
-        # long form is kept deliberately to make the "vs. no battery"
-        # derivation explicit, not because `imported` is needed for the
-        # final result.
+        # NET saving for this period: what the discharged + solar energy saved
+        # at this period's rate, MINUS what was paid to put energy into the
+        # battery during this period. The charge term matters enormously for a
+        # charge-cheap/use-later setup: omitting it inflated the daily figure
+        # by the whole charge cost (measured 2026-09-05: EUR 3.31 reported vs
+        # EUR 2.11 actual). Expect this to be negative during Night Boost
+        # (charging) and positive during Day/Peak (discharging) -- the two
+        # sides are the arbitrage spread, and they net out across the day.
         state: >
           {% set rate = 0.4508 %}
-          {% set imported = states('sensor.grid_import_daily_peak') | float(0) %}
+          {% set charged = states('sensor.battery_charge_daily_peak') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_peak') | float(0) %}
           {% set solar = states('sensor.solar_daily_peak') | float(0) %}
-          {% set cost_with = imported * rate %}
-          {% set cost_without = (imported + discharged + solar) * rate %}
-          {{ (cost_without - cost_with) | round(2) }}
+          {{ ((discharged + solar - charged) * rate) | round(2) }}
 
       # ─── PER-PERIOD ARBITRAGE (TODAY) ───────────────────────────
       - name: "Arbitrage Today - Night Boost"
@@ -348,10 +356,10 @@ template:
         icon: mdi:currency-eur
         state: >
           {% set standing = 0.9164 %}
-          {% set nb = (states('sensor.grid_import_daily_night_boost') | float(0) + states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.0824 %}
-          {% set n  = (states('sensor.grid_import_daily_night') | float(0) + states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2438 %}
-          {% set d  = (states('sensor.grid_import_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
-          {% set p  = (states('sensor.grid_import_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
+          {% set nb = (states('sensor.grid_import_daily_night_boost') | float(0) - states('sensor.battery_charge_daily_night_boost') | float(0) + states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.0824 %}
+          {% set n  = (states('sensor.grid_import_daily_night') | float(0) - states('sensor.battery_charge_daily_night') | float(0) + states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2438 %}
+          {% set d  = (states('sensor.grid_import_daily_day') | float(0) - states('sensor.battery_charge_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
+          {% set p  = (states('sensor.grid_import_daily_peak') | float(0) - states('sensor.battery_charge_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       # ─── TODAY AGGREGATES (per-period, replacing flat-rate guesses) ──
@@ -472,10 +480,10 @@ template:
           {{ metered > 0 or inverter == 0 }}
         state: >
           {% set standing = 0.9164 %}
-          {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
-          {% set n  = (state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
-          {% set d  = (state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
-          {% set p  = (state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
+          {% set n  = (state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
+          {% set d  = (state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
+          {% set p  = (state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       - name: "Arbitrage Profit Yesterday"
@@ -622,6 +630,49 @@ template:
         state: >
           {{ (states('sensor.energy_cost_without_battery_yesterday') | float(0)
             - states('sensor.energy_cost_yesterday') | float(0)) | round(2) }}
+
+      # ─── GROSS vs NET ───────────────────────────────────────────
+      # "Avoided cost" is the GROSS figure: what the energy the battery and
+      # solar supplied would have cost had it been bought from the grid at the
+      # rate in force when it was used. Subtracting battery_charge_cost gives
+      # the NET saving reported by energy_saving_*. Both are surfaced because
+      # for a charge-cheap/use-later setup the spread between them IS the
+      # business model, and a single "saving" number hides it.
+      - name: "Energy Avoided Cost Today"
+        unique_id: energy_avoided_cost_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:cash-remove
+        state: >
+          {% set nb = (states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.0824 %}
+          {% set ni = (states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2438 %}
+          {% set da = (states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
+          {% set pe = (states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
+          {{ (nb + ni + da + pe) | round(2) }}
+
+      - name: "Energy Avoided Cost Yesterday"
+        unique_id: energy_avoided_cost_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:cash-remove
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
+          {% set ni = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
+          {% set da = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
+          {% set pe = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {{ (nb + ni + da + pe) | round(2) }}
 
       # ─── CURRENT PERIOD / RATE ──────────────────────────────────
       # Single source of truth for "which tariff period is it now". Read
