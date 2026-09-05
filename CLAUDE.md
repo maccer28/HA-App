@@ -7,7 +7,10 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 ## System details
 - **HA host**: https://ha.ma33er.xyz / 192.168.1.240
 - **Config path**: /srv/dev-disk-by-uuid-9f09d20d-90ff-43e0-be85-970dea1fff5c/newinstall/appdata/homeassistant/config/
-- **Panel file**: config/www/energy-dashboard/energy-dashboard.js
+- **Panel file**: config/www/energy-dashboard/energy-dashboard.js — historical
+  path from the pre-HACS approach; HACS now manages the panel file's location
+  on the host directly, this is not something you manually copy to anymore
+  (see `## Deploy` below)
 - **Inverter**: Solis S6-EH1P (1-Phase LV Hybrid, Protocol 33, Modbus via waveshare bridge at 192.168.1.254:502)
 - **Battery**: Lithtech TR8500WX — 51.2V nominal, 314Ah, 16.076kWh, Max charge/discharge 200A
 - **Solar**: AC-coupled, separate Modbus inverter on waveshare bridge slave 1
@@ -120,6 +123,12 @@ const result = await this._hass.connection.sendMessagePromise({
 ```
 
 ## configuration.yaml panel registration
+
+**Superseded** — this exact block should be removed from the host's
+`configuration.yaml`; the current `panel_custom` registration lives in
+`ha-config/packages/tariff_period_breakdown.yaml` with a HACS-served
+`module_url`. Kept here as a reference for what to delete (see `## Deploy`).
+
 ```yaml
 panel_custom:
   - name: energy-dashboard
@@ -164,9 +173,35 @@ HACS handles placing the file under `/hacsfiles/HA-App/`.
 
 Backend sensors/automations: edit
 `ha-config/packages/tariff_period_breakdown.yaml` in this repo, validate
-with `python3 scripts/validate_ha_yaml.py ha-config/packages/*.yaml`, then
-copy it to the HA host's `config/packages/` directory and restart HA (this
-repo has no network access to the HA host, so this copy step is manual).
+with `python3 scripts/validate_ha_yaml.py ha-config/packages/*.yaml`, then,
+**before** copying it to the host, edit the host's `configuration.yaml`
+and delete:
+- the existing template sensor blocks with `unique_id: energy_cost_today`
+  and `unique_id: energy_cost_without_battery_today` — the package defines
+  accurate replacements with the same `unique_id`s, and HA packages
+  *merge* with the main config rather than overriding it, so leaving the
+  old blocks in place means the new accurate sensors get skipped (or
+  create duplicate `_2` entities) and the old inaccurate heuristic keeps
+  being used everywhere downstream.
+- the existing `panel_custom` block for `url_path: energy-dashboard` /
+  `module_url: /local/energy-dashboard/energy-dashboard.js` (shown below
+  under "configuration.yaml panel registration") — the package registers
+  its own `panel_custom` entry at the same `url_path`, HA raises an error
+  on a duplicate `frontend_url_path`, and there's a real risk the broken
+  `/local/` entry (see "Lessons learned" below on `NS_ERROR_CORRUPTED_CONTENT`)
+  wins the conflict.
+
+Then copy the package to the HA host's `config/packages/` directory and
+restart HA (this repo has no network access to the HA host, so this copy
+step is manual). Before trusting the new sensors, verify
+`sensor.solar_total_yield` is genuinely in kWh (e.g. compare its value
+against a known recent daily solar total, or cross-check with
+`sensor.solar_today`) — if it turns out to actually be in Wh,
+`sensor.saving_today_*` and `sensor.energy_cost_without_battery_today`
+will overstate savings by roughly 1000x, and since the nightly rollup
+automation feeds `saving_today_*` into the `input_number.total_saving_*`
+lifetime accumulators, that error becomes permanent until manually
+corrected.
 
 ## Notes
 - solar_today is in Wh not kWh — divide by 1000 when displaying
@@ -332,6 +367,12 @@ async _loadChartJS() {
 HA injects its own CSS variables into the page. Always use hardcoded hex values in the web component, never `var(--bg)` etc, or HA's theme will override your colours. The component's own `<style>` tag inside `innerHTML` is scoped to that component and works fine.
 
 ### Deploy after changes
+
+**Superseded** by the HACS-based deploy in `## Deploy` above; this manual
+`cp` approach is no longer the active procedure, kept here as historical
+context for why the web-component approach (below) was chosen over the
+earlier HTML-panel approach.
+
 ```bash
 cp energy-dashboard.js /srv/dev-disk-by-uuid-9f09d20d-90ff-43e0-be85-970dea1fff5c/newinstall/appdata/homeassistant/config/www/energy-dashboard/energy-dashboard.js
 # Then in HA: Developer Tools → YAML → Reload Location (or full restart for first install)

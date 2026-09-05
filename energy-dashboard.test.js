@@ -30,6 +30,7 @@ test('buildFinancialRows extracts and orders all four periods', () => {
   assert.equal(rows.length, 4);
   assert.deepEqual(rows.map(r => r.period), ['Night Boost', 'Night', 'Day', 'Peak']);
   assert.deepEqual(rows[0], {
+    key: 'night_boost',
     period: 'Night Boost',
     todaySaving: 1.23,
     todayArbitrage: -0.25,
@@ -37,6 +38,7 @@ test('buildFinancialRows extracts and orders all four periods', () => {
     lifetimeArbitrage: -3.1,
   });
   assert.deepEqual(rows[2], {
+    key: 'day',
     period: 'Day',
     todaySaving: 2,
     todayArbitrage: 0.75,
@@ -48,6 +50,7 @@ test('buildFinancialRows extracts and orders all four periods', () => {
 test('buildFinancialRows defaults missing or unavailable sensors to 0', () => {
   const rows = buildFinancialRows({});
   assert.deepEqual(rows[0], {
+    key: 'night_boost',
     period: 'Night Boost',
     todaySaving: 0,
     todayArbitrage: 0,
@@ -64,18 +67,18 @@ test('buildFinancialRows defaults missing or unavailable sensors to 0', () => {
 
 test('renderRowsHTML formats each row as a table row with euro amounts', () => {
   const html = renderRowsHTML([
-    { period: 'Night Boost', todaySaving: 1.5, todayArbitrage: -0.2, lifetimeSaving: 10, lifetimeArbitrage: 2 },
+    { key: 'night_boost', period: 'Night Boost', todaySaving: 1.5, todayArbitrage: -0.2, lifetimeSaving: 10, lifetimeArbitrage: 2 },
   ]);
   assert.equal(
     html,
-    '<tr><td>Night Boost</td><td>€1.50</td><td>€-0.20</td><td>€10.00</td><td>€2.00</td></tr>'
+    '<tr class="period-night_boost"><td>Night Boost</td><td>€1.50</td><td>€-0.20</td><td>€10.00</td><td>€2.00</td></tr>'
   );
 });
 
 test('renderRowsHTML joins multiple rows with no separator needed between <tr> tags', () => {
   const html = renderRowsHTML([
-    { period: 'Day', todaySaving: 1, todayArbitrage: 1, lifetimeSaving: 1, lifetimeArbitrage: 1 },
-    { period: 'Peak', todaySaving: 2, todayArbitrage: 2, lifetimeSaving: 2, lifetimeArbitrage: 2 },
+    { key: 'day', period: 'Day', todaySaving: 1, todayArbitrage: 1, lifetimeSaving: 1, lifetimeArbitrage: 1 },
+    { key: 'peak', period: 'Peak', todaySaving: 2, todayArbitrage: 2, lifetimeSaving: 2, lifetimeArbitrage: 2 },
   ]);
-  assert.equal((html.match(/<tr>/g) || []).length, 2);
+  assert.equal((html.match(/<tr class="period-/g) || []).length, 2);
 });

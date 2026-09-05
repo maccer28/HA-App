@@ -13,6 +13,7 @@ function num(states, entityId) {
 
 export function buildFinancialRows(states) {
   return PERIODS.map(({ key, label }) => ({
+    key,
     period: label,
     todaySaving: num(states, `sensor.saving_today_${key}`),
     todayArbitrage: num(states, `sensor.arbitrage_today_${key}`),
@@ -29,7 +30,7 @@ export function renderRowsHTML(rows) {
   return rows
     .map(
       r =>
-        `<tr><td>${r.period}</td><td>${euro(r.todaySaving)}</td><td>${euro(r.todayArbitrage)}</td><td>${euro(r.lifetimeSaving)}</td><td>${euro(r.lifetimeArbitrage)}</td></tr>`
+        `<tr class="period-${r.key}"><td>${r.period}</td><td>${euro(r.todaySaving)}</td><td>${euro(r.todayArbitrage)}</td><td>${euro(r.lifetimeSaving)}</td><td>${euro(r.lifetimeArbitrage)}</td></tr>`
     )
     .join('');
 }
@@ -53,6 +54,9 @@ if (typeof HTMLElement !== 'undefined') {
           table { border-collapse: collapse; width: 100%; max-width: 640px; }
           th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-family: 'JetBrains Mono', monospace; font-size: 14px; }
           th { color: #6b7280; font-family: Inter, sans-serif; font-weight: 500; }
+          .period-night_boost td:first-child, .period-night td:first-child { border-left: 3px solid #3b82f6; }
+          .period-day td:first-child { border-left: 3px solid #f59e0b; }
+          .period-peak td:first-child { border-left: 3px solid #ef4444; }
         </style>
         <div id="financial">
           <h2>Financial &mdash; Savings by Tariff Period</h2>
