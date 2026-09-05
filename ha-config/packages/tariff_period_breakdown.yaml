@@ -433,6 +433,18 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:currency-eur
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {% set standing = 0.9164 %}
           {% set nb = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
@@ -446,6 +458,18 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:currency-eur
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {% set standing = 0.9164 %}
           {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
@@ -459,6 +483,18 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:trending-up
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
           {% set n  = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0)) * 0.2438 %}
@@ -471,6 +507,18 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:battery-charging
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {% set nb = state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
           {% set n  = state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) * 0.2438 %}
@@ -483,6 +531,18 @@ template:
         unit_of_measurement: "kWh"
         device_class: energy
         state_class: measurement
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {{ (state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)
             + state_attr('sensor.solar_daily_night', 'last_period') | float(0)
@@ -494,6 +554,18 @@ template:
         unit_of_measurement: "EUR"
         state_class: measurement
         icon: mdi:solar-power
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
         state: >
           {{ (states('sensor.solar_yesterday_kwh') | float(0) * 0.3233) | round(2) }}
 
@@ -525,6 +597,31 @@ template:
               + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0)) | round(3) }}
           inverter: >
             {{ states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) | round(3) }}
+
+      # Overrides the host's copy so it inherits the same availability rule as
+      # the two cost sensors it derives from — otherwise both costs go
+      # unavailable, float(0) turns them into 0, and this reports a confident
+      # EUR 0.00 saving for a day we have no data for.
+      - name: "Energy Saving Yesterday"
+        unique_id: energy_saving_yesterday
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:piggy-bank
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {{ (states('sensor.energy_cost_without_battery_yesterday') | float(0)
+            - states('sensor.energy_cost_yesterday') | float(0)) | round(2) }}
 
       # ─── CURRENT PERIOD / RATE ──────────────────────────────────
       # Single source of truth for "which tariff period is it now". Read

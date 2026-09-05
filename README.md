@@ -15,7 +15,7 @@ a native web component. See `CLAUDE.md` for full technical details.
    package's accurate sensor is skipped (or lands as a duplicate `_2` entity)
    and the old one keeps being used everywhere downstream.
 
-   **Delete these ten template sensor blocks** — each collides with a package
+   **Delete these eleven template sensor blocks** — each collides with a package
    sensor of the same `unique_id`:
 
    | Block | Why the package's version is better |
@@ -30,11 +30,11 @@ a native web component. See `CLAUDE.md` for full technical details.
    | `Arbitrage Profit Today` | per-period rates instead of charge@night-boost / discharge@day |
    | `Arbitrage Profit Yesterday` | same |
    | `Total Energy Saving` | **stops double-counting solar** — see step 4b |
+   | `Energy Saving Yesterday` | goes *unavailable* instead of reporting a confident €0.00 for a day with no meter data |
 
-   **Keep** `Energy Saving Today`, `Energy Saving Yesterday`,
-   `Total Arbitrage Profit`, `Average Daily Saving`, `Projected Annual Saving`
-   and `Days Since Install` — they derive from the sensors above and need no
-   change.
+   **Keep** `Energy Saving Today`, `Total Arbitrage Profit`,
+   `Average Daily Saving`, `Projected Annual Saving` and `Days Since Install` —
+   they derive from the sensors above and need no change.
 
    Optional cleanup (redundant, but no `unique_id` collision so they will not
    break anything): `Grid Import Rate Breakdown` duplicates
@@ -114,25 +114,26 @@ panel references it or `sensor.solar_today_previous_period` any more, so the
 ambiguity no longer affects any displayed figure. Once the step 4 deletions are
 made, both are unused and can be removed as helpers if you want.
 
-`sensor.solar_today` is a *different* sensor — a UI helper, not defined in any
-YAML — and its unit is still unverified. Two host templates disagree about it:
-`Solar Value Yesterday` and `Energy Cost Without Battery Yesterday` read
-`sensor.solar_today_previous_period` with no `/1000`, while the old
-`Solar Value Today` divided by 1000. They are snapshots of the same meter, so
-one of them is wrong by 1000x.
+Verified live on 2026-09-05: `sensor.solar_today` is in **Wh**, and
+`sensor.solar_today_previous_period` **does not exist at all** — the host
+templates that read it silently evaluated to €0, so yesterday's solar was being
+counted as zero rather than being mis-scaled.
 
-To settle it, open **Developer Tools → States → `sensor.solar_today`**. A value
-like `8.4` means kWh; `8400` means Wh.
+### First two days after install
 
-- **If Wh**: add `/ 1000` to the `solar` line in both `Solar Value Yesterday`
-  and `Energy Cost Without Battery Yesterday` in the host's
-  `configuration.yaml`. Until then those two overstate yesterday's solar 1000x,
-  which inflates `sensor.energy_saving_yesterday`.
-- **If kWh**: both are already correct, leave them alone.
+The yesterday sensors read from `last_period`, which only becomes meaningful
+after a full cycle has completed. Expect:
 
-Either way this now affects only the *yesterday* column — deleting the old
-`Solar Value Today` in step 4 removes the ambiguity from today's figures and
-from `sensor.total_energy_saving`.
+- **Day 1**: no completed cycle, so every yesterday sensor is *unavailable* and
+  the panel shows `—`. This is deliberate — reporting €0.00 saved would be a
+  confident lie.
+- **Day 2**: yesterday covers only from whenever the meters first saw their
+  source tick, so it is partial.
+- **Day 3 onward**: correct.
+
+`sensor.tariff_meter_drift_yesterday` quantifies the gap while this settles: it
+reads roughly `-(yesterday's import)` when the meters hold nothing, and
+approaches 0 once they are tracking properly.
 
 ## Development
 
