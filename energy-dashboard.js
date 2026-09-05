@@ -7,6 +7,7 @@ const PERIODS = [
 
 export const TABS = [
   { key: 'live', label: 'Live' },
+  { key: 'history', label: 'History' },
   { key: 'financial', label: 'Financial' },
 ];
 
@@ -253,6 +254,104 @@ export function buildSystemStats(states) {
   return rows;
 }
 
+
+export function buildBatteryStatus(states) {
+  return {
+    soc: numOrNull(states, 'sensor.solis_s6_eh1p_battery_soc'),
+    socText: fmtNum(numOrNull(states, 'sensor.solis_s6_eh1p_battery_soc'), 0, '%'),
+    sohText: fmtNum(numOrNull(states, 'sensor.solis_s6_eh1p_battery_soh'), 0, '%'),
+    voltText: fmtNum(numOrNull(states, 'sensor.solis_s6_eh1p_battery_voltage'), 1, 'V'),
+    currText: fmtNum(numOrNull(states, 'sensor.solis_s6_eh1p_battery_current'), 1, 'A'),
+  };
+}
+
+// The money story as an arithmetic chain rather than one opaque total: what
+// the battery/solar energy would have cost, minus what was paid to store it.
+const MONEY_CHAIN = [
+  ['Avoided cost', 'sensor.energy_avoided_cost_today', 'sensor.energy_avoided_cost_yesterday', '+'],
+  ['Battery charge cost', 'sensor.battery_charge_cost_today', 'sensor.battery_charge_cost_yesterday', '\u2212'],
+  ['Net saving', 'sensor.energy_saving_today', 'sensor.energy_saving_yesterday', '='],
+];
+
+export function buildMoneyChain(states) {
+  return MONEY_CHAIN.map(([label, today, yesterday, op]) => ({
+    label,
+    op,
+    today: fmtEuro(numOrNull(states, today)),
+    yesterday: fmtEuro(numOrNull(states, yesterday)),
+  }));
+}
+
+// ─── History (long-term statistics) ───────────────────────────────────
+// Raw recorder history is purged after ~10 days on this system, so anything
+// longer has to come from HA's long-term statistics, which are kept forever.
+
+export const HISTORY_ENERGY_IDS = [
+  'sensor.grid_import_daily_night_boost',
+  'sensor.grid_import_daily_night',
+  'sensor.grid_import_daily_day',
+  'sensor.grid_import_daily_peak',
+];
+
+export const HISTORY_MONEY_IDS = [
+  'sensor.energy_saving_today',
+  'sensor.energy_avoided_cost_today',
+  'sensor.battery_charge_cost_today',
+];
+
+export function statisticsRequest(statisticIds, days, types, now = new Date()) {
+  const start = new Date(now.getTime() - days * 86400000);
+  return {
+    type: 'recorder/statistics_during_period',
+    start_time: start.toISOString(),
+    end_time: now.toISOString(),
+    statistic_ids: statisticIds,
+    period: 'day',
+    types,
+  };
+}
+
+function dayKey(row) {
+  return String(row.start).slice(0, 10);
+}
+
+// utility_meter statistics carry a monotonically rising `sum` that continues
+// across the daily reset, so a day's energy is the rise in that sum. The first
+// row has no predecessor and is dropped rather than reported as its own total.
+export function dailyDeltas(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  let prev = null;
+  for (const row of rows) {
+    const sum = Number(row?.sum);
+    if (!Number.isFinite(sum)) continue;
+    if (prev !== null) out.push({ day: dayKey(row), value: Math.max(0, sum - prev) });
+    prev = sum;
+  }
+  return out;
+}
+
+// Financial sensors are state_class measurement, so statistics store max per
+// period. These climb from 0 each day, making the daily max the end-of-day value.
+export function dailyMaxima(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter(r => Number.isFinite(Number(r?.max)))
+    .map(r => ({ day: dayKey(r), value: Number(r.max) }));
+}
+
+// Union of every day present across the series, so a sensor that was missing
+// for a day leaves a gap rather than silently shifting later days left.
+export function alignSeries(seriesByKey) {
+  const days = [...new Set(Object.values(seriesByKey).flat().map(p => p.day))].sort();
+  const datasets = {};
+  for (const [key, points] of Object.entries(seriesByKey)) {
+    const byDay = new Map(points.map(p => [p.day, p.value]));
+    datasets[key] = days.map(d => (byDay.has(d) ? byDay.get(d) : null));
+  }
+  return { days, datasets };
+}
+
 // ─── Live tab rendering ───────────────────────────────────────────────
 
 export function renderTabsHTML(tabs, activeKey) {
@@ -271,8 +370,7 @@ function renderStatRowsHTML(rows) {
 export function renderLiveHTML(states) {
   const flow = buildPowerFlow(states);
   const rate = buildRateNow(states);
-  const energy = buildEnergyToday(states);
-  const money = buildFinancialSummary(states);
+  const batt = buildBatteryStatus(states);
   const stats = buildSystemStats(states);
 
   const nodes = flow
@@ -286,12 +384,7 @@ export function renderLiveHTML(states) {
     p => `<span class="rate-period${rate.isKnown && rate.period === p.key ? ' active' : ''}">${p.label}</span>`
   ).join('');
 
-  const moneyRows = money
-    .map(
-      r =>
-        `<tr><td>${r.label}</td><td>${r.today}</td><td>${r.yesterday}</td><td>${r.total}</td></tr>`
-    )
-    .join('');
+  const pct = batt.soc === null ? 0 : Math.max(0, Math.min(100, batt.soc));
 
   return `
     <section class="card">
@@ -299,25 +392,87 @@ export function renderLiveHTML(states) {
       <div class="flow">${nodes}</div>
     </section>
     <section class="card">
+      <h3>Battery</h3>
+      <div class="soc-row">
+        <div class="soc-bar"><div class="soc-fill" style="width:${pct}%"></div></div>
+        <b class="soc-value">${batt.socText}</b>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Voltage</span><b>${batt.voltText}</b></div>
+        <div class="stat"><span>Current</span><b>${batt.currText}</b></div>
+        <div class="stat"><span>Health</span><b>${batt.sohText}</b></div>
+      </div>
+    </section>
+    <section class="card">
       <h3>Rate Now</h3>
       <div class="rate-value">${rate.rateText}</div>
       <div class="rate-periods">${chips}</div>
     </section>
     <section class="card">
-      <h3>Energy Today</h3>
-      <div class="stats">${renderStatRowsHTML(energy)}</div>
-    </section>
-    <section class="card">
-      <h3>Financial</h3>
-      <table>
-        <thead><tr><th>Metric</th><th>Today</th><th>Yesterday</th><th>Lifetime</th></tr></thead>
-        <tbody>${moneyRows}</tbody>
-      </table>
-    </section>
-    <section class="card">
       <h3>System</h3>
       <div class="stats">${renderStatRowsHTML(stats)}</div>
     </section>
+  `;
+}
+
+export function renderFinancialHTML(states) {
+  const chain = buildMoneyChain(states);
+  const summary = buildFinancialSummary(states);
+  const periods = buildFinancialRows(states);
+
+  const chainRows = chain
+    .map(
+      r =>
+        `<tr class="${r.op === '=' ? 'chain-total' : ''}"><td class="chain-op">${r.op}</td><td>${r.label}</td><td>${r.today}</td><td>${r.yesterday}</td></tr>`
+    )
+    .join('');
+
+  const summaryRows = summary
+    .map(r => `<tr><td>${r.label}</td><td>${r.today}</td><td>${r.yesterday}</td><td>${r.total}</td></tr>`)
+    .join('');
+
+  return `
+    <section class="card">
+      <h3>How the saving is made</h3>
+      <table>
+        <thead><tr><th></th><th>Metric</th><th>Today</th><th>Yesterday</th></tr></thead>
+        <tbody>${chainRows}</tbody>
+      </table>
+      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it. Subtracting what you paid to charge gives the net saving.</p>
+    </section>
+    <section class="card">
+      <h3>Detail</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>Today</th><th>Yesterday</th><th>Lifetime</th></tr></thead>
+        <tbody>${summaryRows}</tbody>
+      </table>
+    </section>
+    <section class="card">
+      <h3>By tariff period</h3>
+      <table>
+        <thead><tr><th>Period</th><th>Today Saving</th><th>Today Arbitrage</th><th>Lifetime Saving</th><th>Lifetime Arbitrage</th></tr></thead>
+        <tbody>${renderRowsHTML(periods)}</tbody>
+      </table>
+      <p class="note">Night Boost is normally negative &mdash; energy goes in and none comes out. Day and Peak are where it is paid back.</p>
+    </section>
+  `;
+}
+
+export function renderHistoryHTML(states) {
+  return `
+    <section class="card">
+      <h3>Energy today</h3>
+      <div class="stats">${renderStatRowsHTML(buildEnergyToday(states))}</div>
+    </section>
+    <section class="card">
+      <h3>Grid import by tariff &mdash; last 30 days</h3>
+      <div class="chart"><canvas id="chart-import"></canvas></div>
+    </section>
+    <section class="card">
+      <h3>Net saving per day &mdash; last 30 days</h3>
+      <div class="chart"><canvas id="chart-saving"></canvas></div>
+    </section>
+    <p class="note" id="history-note">Loading statistics&hellip;</p>
   `;
 }
 
@@ -329,6 +484,8 @@ if (typeof HTMLElement !== 'undefined') {
       this._initialized = false;
       this._activeTab = 'live';
       this._renderedTab = null;
+      this._historyRendered = false;
+      this._charts = {};
     }
 
     connectedCallback() {
@@ -365,18 +522,19 @@ if (typeof HTMLElement !== 'undefined') {
           .stat { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; }
           .stat span { color: #6b7280; font-size: 13px; }
           .stat b { font: 500 14px 'JetBrains Mono', monospace; }
+          .soc-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+          .soc-bar { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
+          .soc-fill { height: 100%; background: #3b82f6; border-radius: 999px; }
+          .soc-value { font: 600 20px 'JetBrains Mono', monospace; min-width: 64px; text-align: right; }
+          .chart { position: relative; height: 260px; }
+          .note { color: #6b7280; font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 720px; }
+          .chain-op { color: #6b7280; width: 1.5em; font-family: 'JetBrains Mono', monospace; }
+          .chain-total td { border-top: 1px solid rgba(255,255,255,0.18); font-weight: 600; color: #22c55e; }
         </style>
         <div id="tabs"></div>
         <div id="panel-live" class="panel"></div>
-        <div id="panel-financial" class="panel">
-          <h2>Financial &mdash; Savings by Tariff Period</h2>
-          <table>
-            <thead>
-              <tr><th>Period</th><th>Today Saving</th><th>Today Arbitrage</th><th>Lifetime Saving</th><th>Lifetime Arbitrage</th></tr>
-            </thead>
-            <tbody id="financial-body"></tbody>
-          </table>
-        </div>
+        <div id="panel-history" class="panel"></div>
+        <div id="panel-financial" class="panel"></div>
       `;
       // Delegated, so the listener survives the tab strip being re-rendered.
       this.querySelector('#tabs').addEventListener('click', e => {
@@ -396,24 +554,120 @@ if (typeof HTMLElement !== 'undefined') {
 
     _render() {
       const states = this._hass?.states || {};
-      const live = this.querySelector('#panel-live');
-      const financial = this.querySelector('#panel-financial');
-      if (!live || !financial) return;
+      const panels = {
+        live: this.querySelector('#panel-live'),
+        history: this.querySelector('#panel-history'),
+        financial: this.querySelector('#panel-financial'),
+      };
+      if (!panels.live) return;
 
       // hass is set on every state change system-wide, so only touch the tab
       // strip when the selection actually moved.
       if (this._renderedTab !== this._activeTab) {
         this._renderedTab = this._activeTab;
         this.querySelector('#tabs').innerHTML = renderTabsHTML(TABS, this._activeTab);
-        live.hidden = this._activeTab !== 'live';
-        financial.hidden = this._activeTab !== 'financial';
+        for (const [key, el] of Object.entries(panels)) el.hidden = key !== this._activeTab;
       }
 
       if (this._activeTab === 'live') {
-        live.innerHTML = renderLiveHTML(states);
-      } else {
-        this.querySelector('#financial-body').innerHTML = renderRowsHTML(buildFinancialRows(states));
+        panels.live.innerHTML = renderLiveHTML(states);
+      } else if (this._activeTab === 'financial') {
+        panels.financial.innerHTML = renderFinancialHTML(states);
+      } else if (this._activeTab === 'history') {
+        // Charts own their canvases, so only rebuild the shell once — a
+        // re-render on every state change would destroy them continuously.
+        if (!this._historyRendered) {
+          this._historyRendered = true;
+          panels.history.innerHTML = renderHistoryHTML(states);
+          this._loadHistory();
+        }
       }
+    }
+
+    async _loadChartJS() {
+      if (window.Chart) return;
+      if (!this._chartPromise) {
+        this._chartPromise = new Promise((resolve, reject) => {
+          const el = document.createElement('script');
+          el.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+          el.onload = resolve;
+          el.onerror = () => reject(new Error('Chart.js failed to load'));
+          document.head.appendChild(el);
+        });
+      }
+      await this._chartPromise;
+    }
+
+    async _loadHistory() {
+      const note = () => this.querySelector('#history-note');
+      try {
+        await this._loadChartJS();
+        const [energy, money] = await Promise.all([
+          this._hass.connection.sendMessagePromise(
+            statisticsRequest(HISTORY_ENERGY_IDS, 30, ['sum'])
+          ),
+          this._hass.connection.sendMessagePromise(
+            statisticsRequest(HISTORY_MONEY_IDS, 30, ['max'])
+          ),
+        ]);
+
+        const importSeries = {};
+        for (const id of HISTORY_ENERGY_IDS) {
+          importSeries[PERIOD_LABELS[id.replace('sensor.grid_import_daily_', '')]] = dailyDeltas(energy?.[id]);
+        }
+        this._drawStacked('chart-import', alignSeries(importSeries), 'kWh');
+
+        const savingSeries = { 'Net saving': dailyMaxima(money?.['sensor.energy_saving_today']) };
+        this._drawBars('chart-saving', alignSeries(savingSeries), '\u20ac');
+
+        const n = note();
+        if (n) n.textContent = 'From Home Assistant long-term statistics. Raw history on this system is purged after ~10 days, so these are the daily rollups, which are kept indefinitely.';
+      } catch (e) {
+        console.error('Energy dashboard history failed:', e);
+        const n = note();
+        if (n) n.textContent = `Could not load statistics: ${e.message}`;
+      }
+    }
+
+    _chartBase(labels, datasets, unit) {
+      return {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#e2e8f0', boxWidth: 12 } } },
+          scales: {
+            x: { stacked: true, ticks: { color: '#6b7280', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: { stacked: true, ticks: { color: '#6b7280', callback: v => `${v}${unit === '\u20ac' ? '' : ' '}${unit}` }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          },
+        },
+      };
+    }
+
+    _drawStacked(canvasId, { days, datasets }, unit) {
+      const colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'];
+      const sets = Object.entries(datasets).map(([label, data], i) => ({
+        label, data, backgroundColor: colors[i % colors.length],
+      }));
+      this._mount(canvasId, this._chartBase(days, sets, unit));
+    }
+
+    _drawBars(canvasId, { days, datasets }, unit) {
+      const sets = Object.entries(datasets).map(([label, data]) => ({
+        label,
+        data,
+        backgroundColor: data.map(v => (v < 0 ? '#ef4444' : '#22c55e')),
+      }));
+      this._mount(canvasId, this._chartBase(days, sets, unit));
+    }
+
+    _mount(canvasId, config) {
+      const canvas = this.querySelector(`#${canvasId}`);
+      if (!canvas) return;
+      this._charts = this._charts || {};
+      this._charts[canvasId]?.destroy();
+      this._charts[canvasId] = new window.Chart(canvas, config);
     }
   }
 

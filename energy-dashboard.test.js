@@ -14,6 +14,13 @@ import {
   buildSystemStats,
   renderTabsHTML,
   renderLiveHTML,
+  renderFinancialHTML,
+  buildBatteryStatus,
+  buildMoneyChain,
+  statisticsRequest,
+  dailyDeltas,
+  dailyMaxima,
+  alignSeries,
   TABS,
 } from './energy-dashboard.js';
 
@@ -319,9 +326,96 @@ test('renderLiveHTML highlights the active period only when it is known', () => 
   const known = renderLiveHTML(liveStates);
   assert.match(known, /class="rate-period active"/);
   assert.match(known, /2\.45 kW/);
-  assert.match(known, /€312\.45/);
 
   const unknown = renderLiveHTML({});
   assert.doesNotMatch(unknown, /active/);
   assert.match(unknown, /—/);
+});
+
+test('the Live tab stays simple: no money on it, money lives on Financial', () => {
+  const live = renderLiveHTML(liveStates);
+  // The current rate is live data and belongs here; running totals do not.
+  assert.match(live, /€0\.3233\/kWh/, 'the rate in force now is live data');
+  for (const total of ['312.45', '48.20', '2.31', '1.79']) {
+    assert.ok(!live.includes(total), `Live tab should not carry the running total ${total}`);
+  }
+  assert.doesNotMatch(live, /Saving|Arbitrage|Avoided/, 'financial labels belong on the Financial tab');
+  assert.match(live, /soc-fill/, 'Live tab should show battery state of charge');
+
+  const fin = renderFinancialHTML(liveStates);
+  assert.match(fin, /€312\.45/);
+  assert.match(fin, /Net saving/);
+});
+
+test('buildMoneyChain lays the saving out as avoided - charge = net', () => {
+  const chain = buildMoneyChain({
+    'sensor.energy_avoided_cost_today': { state: '3.56' },
+    'sensor.battery_charge_cost_today': { state: '1.20' },
+    'sensor.energy_saving_today': { state: '2.36' },
+  });
+  assert.deepEqual(chain.map(r => r.op), ['+', '\u2212', '=']);
+  assert.deepEqual(chain.map(r => r.today), ['€3.56', '€1.20', '€2.36']);
+  // the chain must actually add up, or the display is lying
+  assert.equal((3.56 - 1.20).toFixed(2), '2.36');
+  for (const r of buildMoneyChain({})) assert.equal(r.today, DASH);
+});
+
+test('buildBatteryStatus reports SOC and clamps nothing away when missing', () => {
+  const b = buildBatteryStatus({
+    'sensor.solis_s6_eh1p_battery_soc': { state: '59' },
+    'sensor.solis_s6_eh1p_battery_soh': { state: '100' },
+  });
+  assert.equal(b.soc, 59);
+  assert.equal(b.socText, '59 %');
+  assert.equal(b.sohText, '100 %');
+  const empty = buildBatteryStatus({});
+  assert.equal(empty.soc, null);
+  assert.equal(empty.socText, DASH);
+});
+
+test('statisticsRequest asks for daily long-term statistics over the window', () => {
+  const now = new Date('2026-09-05T12:00:00Z');
+  const req = statisticsRequest(['sensor.a', 'sensor.b'], 30, ['sum'], now);
+  assert.equal(req.type, 'recorder/statistics_during_period');
+  assert.equal(req.period, 'day');
+  assert.deepEqual(req.statistic_ids, ['sensor.a', 'sensor.b']);
+  assert.deepEqual(req.types, ['sum']);
+  assert.equal(req.end_time, '2026-09-05T12:00:00.000Z');
+  assert.equal(req.start_time, '2026-08-06T12:00:00.000Z');
+});
+
+test('dailyDeltas turns a rising statistics sum into per-day energy', () => {
+  const rows = [
+    { start: '2026-09-01T00:00:00', sum: 10 },
+    { start: '2026-09-02T00:00:00', sum: 14.5 },
+    { start: '2026-09-03T00:00:00', sum: 20 },
+  ];
+  assert.deepEqual(dailyDeltas(rows), [
+    { day: '2026-09-02', value: 4.5 },
+    { day: '2026-09-03', value: 5.5 },
+  ]);
+  // the first row has no predecessor, so it must not be reported as a day's total
+  assert.equal(dailyDeltas(rows).length, rows.length - 1);
+  // a meter reset must never produce negative energy
+  assert.deepEqual(dailyDeltas([{ start: '2026-09-01', sum: 10 }, { start: '2026-09-02', sum: 2 }]),
+    [{ day: '2026-09-02', value: 0 }]);
+  assert.deepEqual(dailyDeltas(undefined), []);
+});
+
+test('dailyMaxima takes the end-of-day value of a measurement sensor', () => {
+  assert.deepEqual(
+    dailyMaxima([{ start: '2026-09-02T00:00:00', max: 2.36 }, { start: '2026-09-03T00:00:00', max: 1.9 }]),
+    [{ day: '2026-09-02', value: 2.36 }, { day: '2026-09-03', value: 1.9 }]
+  );
+  assert.deepEqual(dailyMaxima(null), []);
+});
+
+test('alignSeries gaps a missing day rather than shifting later days left', () => {
+  const { days, datasets } = alignSeries({
+    Day: [{ day: '2026-09-01', value: 3 }, { day: '2026-09-03', value: 5 }],
+    Peak: [{ day: '2026-09-02', value: 1 }],
+  });
+  assert.deepEqual(days, ['2026-09-01', '2026-09-02', '2026-09-03']);
+  assert.deepEqual(datasets.Day, [3, null, 5]);
+  assert.deepEqual(datasets.Peak, [null, 1, null]);
 });
