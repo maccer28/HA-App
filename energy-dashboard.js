@@ -560,6 +560,7 @@ export function renderLiveHTML(states, now = new Date()) {
       n => `<div class="node">
         <span class="k">${n.label}</span>
         <b class="v" style="color:${n.color}">${n.text}</b>
+        <span class="d">${n.direction || ''}</span>
       </div>`
     )
     .join('');

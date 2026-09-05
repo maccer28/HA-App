@@ -555,3 +555,17 @@ test('correctedNetSaving leaves a day alone when no charge cost was recorded', (
   );
   assert.equal(out[0].value, 3.0, 'a missing charge cost must not be treated as a correction');
 });
+
+test('the power-flow direction renders as its own element, not appended to the value', () => {
+  // Regression: the caption CSS shipped in v0.3.1 while the markup edit silently
+  // failed to apply, so .node .d was styled but never emitted. Assert the markup.
+  const html = renderLiveHTML({
+    'sensor.solis_s6_eh1p_grid_power_net': { state: '25' },
+    'sensor.solis_s6_eh1p_battery_charge_power': { state: '0' },
+    'sensor.solis_s6_eh1p_battery_discharge_power': { state: '357' },
+  });
+  assert.match(html, /<span class="d">Import<\/span>/);
+  assert.match(html, /<span class="d">Discharging<\/span>/);
+  // and the figure itself must not carry the word
+  assert.doesNotMatch(html, /357 W Discharging/);
+});
