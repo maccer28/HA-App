@@ -835,13 +835,16 @@ panel_custom:
     sidebar_title: Energy
     sidebar_icon: mdi:lightning-bolt
     url_path: energy-dashboard
-    # The ?v= is REQUIRED, not cosmetic. This host sits behind Cloudflare
-    # (see the origin.pem cert in configuration.yaml's http: block), which
-    # edge-caches /hacsfiles/*.js. Without a query string the bare URL kept
-    # serving the previous release's file even after a HACS update, two HA
-    # restarts and a browser hard-refresh — a browser refresh cannot clear an
-    # edge cache. Verified 2026-09-05: the bare path returned the old 3048-byte
-    # file while the same path with a query returned the correct 26027-byte one.
+    # No cache-busting query needed: a Cloudflare Cache Rule on this zone
+    # bypasses cache for /hacsfiles/*, so the origin is hit every time and a
+    # HACS update takes effect on its own.
     #
-    # BUMP THIS ON EVERY RELEASE, to match the version installed via HACS.
+    # Verified 2026-09-05: before the rule the bare URL served a stale 3048-byte
+    # file for hours across several HACS updates and restarts; after it, the
+    # same URL returned the current 29875-byte build immediately.
+    #
+    # If that Cloudflare rule is ever removed, this silently breaks again --
+    # HACS will report the new version while the panel keeps rendering the old
+    # one. The fix then is to re-add a ?v=<version> here and bump it on every
+    # release, which is what this line used to do.
     module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.2.3

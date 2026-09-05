@@ -87,13 +87,18 @@ a native web component. See `CLAUDE.md` for full technical details.
    matches the `module_url` in `tariff_period_breakdown.yaml`'s
    `panel_custom` entry — edit and re-copy the package file if it differs.
 
-   **On every upgrade, bump the `?v=` on that `module_url` to the new
-   version.** If the host is behind a CDN (Cloudflare, and this one is —
-   `configuration.yaml`'s `http:` block uses a `origin.pem` Cloudflare Origin
-   Certificate), the bare `.js` URL gets edge-cached and HA will keep loading
-   the *previous* release even after a HACS update, an HA restart and a browser
-   hard-refresh. A browser refresh cannot clear a CDN edge cache. Symptom: HACS
-   reports the new version while the panel still renders the old layout.
+   **If your HA host is behind a CDN, exclude `/hacsfiles/` from its cache.**
+   This one is behind Cloudflare (`configuration.yaml`'s `http:` block uses an
+   `origin.pem` Cloudflare Origin Certificate), and without an exclusion the
+   `.js` gets edge-cached: HACS reports the new version while the panel keeps
+   rendering the old one, through restarts and browser hard-refreshes alike — a
+   browser refresh cannot clear a CDN edge cache. Cloudflare → Caching → Cache
+   Rules → URI Path starts with `/hacsfiles/` → Bypass cache.
+
+   Without such a rule, add `?v=<version>` to `module_url` and bump it on every
+   release instead. That works, but makes each upgrade a two-step job (HACS
+   update *and* re-copy this package), and forgetting the second step fails
+   silently.
 8. Check the HA log for `Duplicate unique_id` — any hit means one of the
    blocks in step 4 was not deleted, and the old inaccurate sensor is still
    the one in use.
