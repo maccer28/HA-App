@@ -18,6 +18,16 @@ a native web component. See `CLAUDE.md` for full technical details.
      leaving the old blocks in place means the new accurate sensors get
      skipped (or create duplicate `_2` entities) and the old inaccurate
      heuristic keeps being used everywhere downstream.
+   - the existing template sensor blocks named `Electricity Rate`
+     (`unique_id: electricity_rate_yaml`) and `Solar Value Today`
+     (`unique_id: solar_value_today`) — same merge problem. The package's
+     `Electricity Rate` is a lookup keyed off `sensor.current_tariff_period`
+     instead of a third copy of the hour boundaries, and its
+     `Solar Value Today` reads the unambiguous `sensor.solar_today_kwh`
+     rather than dividing `sensor.solar_today` by 1000.
+   - the template sensor block named `Grid Import Rate Breakdown` — it is an
+     exact duplicate of the package's `sensor.current_tariff_period` and
+     nothing references it.
    - the existing `panel_custom` block for `url_path: energy-dashboard` /
      `module_url: /local/energy-dashboard/energy-dashboard.js` — the
      package registers its own `panel_custom` entry at the same
@@ -34,23 +44,45 @@ a native web component. See `CLAUDE.md` for full technical details.
    `energy-dashboard.js` (usually `/hacsfiles/HA-App/energy-dashboard.js`)
    matches the `module_url` in `tariff_period_breakdown.yaml`'s
    `panel_custom` entry — edit and re-copy the package file if it differs.
-8. Verify `sensor.solar_total_yield` is genuinely in kWh (e.g. compare its
-   value against a known recent daily solar total, or cross-check with
-   `sensor.solar_today`) before trusting `sensor.saving_today_*` and
-   `sensor.energy_cost_without_battery_today` — if `solar_total_yield`
-   turns out to actually be in Wh, every one of those sensors will
-   overstate savings by roughly 1000x, and since the nightly rollup
-   automation feeds `saving_today_*` into the `input_number.total_saving_*`
-   lifetime accumulators, that error becomes permanent until manually
-   corrected.
+8. Check the HA log for `Duplicate unique_id` — any hit means one of the
+   blocks in step 4 was not deleted, and the old inaccurate sensor is still
+   the one in use.
 9. An "Energy" item should appear in the HA sidebar.
+
+### Outstanding: the `sensor.solar_today` unit
+
+`sensor.solar_total_yield` is confirmed genuinely kWh — the unit is declared
+directly on its Modbus input register. Everything derived from it
+(`sensor.solar_daily_*`, `sensor.solar_today_kwh`, `sensor.saving_today_*`,
+`sensor.energy_cost_without_battery_today`, and the lifetime accumulators fed
+by the nightly rollup) is therefore free of unit ambiguity.
+
+`sensor.solar_today` is a *different* sensor — a UI helper, not defined in any
+YAML — and its unit is still unverified. Two host templates disagree about it:
+`Solar Value Yesterday` and `Energy Cost Without Battery Yesterday` read
+`sensor.solar_today_previous_period` with no `/1000`, while the old
+`Solar Value Today` divided by 1000. They are snapshots of the same meter, so
+one of them is wrong by 1000x.
+
+To settle it, open **Developer Tools → States → `sensor.solar_today`**. A value
+like `8.4` means kWh; `8400` means Wh.
+
+- **If Wh**: add `/ 1000` to the `solar` line in both `Solar Value Yesterday`
+  and `Energy Cost Without Battery Yesterday` in the host's
+  `configuration.yaml`. Until then those two overstate yesterday's solar 1000x,
+  which inflates `sensor.energy_saving_yesterday`.
+- **If kWh**: both are already correct, leave them alone.
+
+Either way this now affects only the *yesterday* column — deleting the old
+`Solar Value Today` in step 4 removes the ambiguity from today's figures and
+from `sensor.total_energy_saving`.
 
 ## Development
 
 - `npm test` — runs the unit tests for the panel's pure calculation/render
   functions (`energy-dashboard.test.js`).
 - `python3 -m http.server` then open `dev/harness.html` — visually verify
-  the panel's Financial table against fake sensor data, without needing a
-  real HA instance.
+  the panel's Live and Financial tabs against fake sensor data, without
+  needing a real HA instance.
 - `python3 scripts/validate_ha_yaml.py ha-config/packages/*.yaml` — checks
   YAML and embedded Jinja template syntax before deploying config changes.

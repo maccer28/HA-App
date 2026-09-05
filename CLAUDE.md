@@ -70,6 +70,16 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 - sensor.total_saving_{night_boost,night,day,peak} — lifetime saving €, split by tariff period
 - sensor.total_arbitrage_{night_boost,night,day,peak} — lifetime arbitrage profit €, split by tariff period
 
+### Derived helpers (defined in the package — use these, not raw sensors)
+- sensor.current_tariff_period — `night_boost|night|day|peak`, read straight
+  off `select.grid_import_daily`. **The** source of truth for "which period
+  is it now". Never recompute the hour boundaries anywhere else — that logic
+  belongs only to the `Tariff Period Sync` automation.
+- sensor.solar_today_kwh — today's solar in kWh, summed from the four
+  `sensor.solar_daily_*` tariff buckets (source: the confirmed-kWh
+  `sensor.solar_total_yield`). Use this instead of `sensor.solar_today`;
+  it exists precisely so no consumer has to remember a `/1000`.
+
 ### Totals (cumulative, ever-increasing)
 - sensor.solar_total_yield — lifetime solar kWh
 - sensor.solis_s6_eh1p_total_battery_charge_energy — lifetime charged kWh
@@ -153,7 +163,10 @@ panel_custom:
 - Fonts: Inter (UI), JetBrains Mono (numbers/data)
 
 ## Dashboard tabs
-1. **Live** — power flow (solar/grid/battery/home nodes), rate now with period highlight, today/yesterday/totals financial grid, system stats (temp/voltage/current/grid V/Hz/status), energy today grid (no bars — just numbers)
+Built so far: **Live** and **Financial** (the tariff-period table). Solar &
+Battery and Totals are not implemented yet; neither is any history/chart code.
+
+1. **Live** ✅ — power flow (solar/grid/battery/home nodes), rate now with period highlight, today/yesterday/totals financial grid, system stats (temp/voltage/current/grid V/Hz/status), energy today grid (no bars — just numbers)
 2. **Solar & Battery** — 24h power flow area chart, 7d daily energy bar chart, 24h SOC area chart, 24h battery voltage line, 24h battery current area, 24h inverter temp area
 3. **Financial** — total saving growth line chart (60d), daily breakdown bar chart (30d: cost/no-battery/saving/arbitrage/charge cost/solar value), daily saving trend (30d), avg daily saving line (30d)
 4. **Totals** — 8 summary tiles (total saving, proj annual, avg/day, days running, total arbitrage, solar total, total charged, current rate), 30d cost breakdown bar chart
@@ -191,20 +204,38 @@ and delete:
   `/local/` entry (see "Lessons learned" below on `NS_ERROR_CORRUPTED_CONTENT`)
   wins the conflict.
 
+- the template sensor blocks `Electricity Rate`
+  (`unique_id: electricity_rate_yaml`), `Solar Value Today`
+  (`unique_id: solar_value_today`) and `Grid Import Rate Breakdown` — the
+  first two have accurate replacements in the package (same `unique_id`s,
+  so the same merge trap applies); the third is an exact duplicate of the
+  package's `sensor.current_tariff_period` and nothing references it.
+
 Then copy the package to the HA host's `config/packages/` directory and
 restart HA (this repo has no network access to the HA host, so this copy
-step is manual). Before trusting the new sensors, verify
-`sensor.solar_total_yield` is genuinely in kWh (e.g. compare its value
-against a known recent daily solar total, or cross-check with
-`sensor.solar_today`) — if it turns out to actually be in Wh,
-`sensor.saving_today_*` and `sensor.energy_cost_without_battery_today`
-will overstate savings by roughly 1000x, and since the nightly rollup
-automation feeds `saving_today_*` into the `input_number.total_saving_*`
-lifetime accumulators, that error becomes permanent until manually
-corrected.
+step is manual). Afterwards, check the HA log for `Duplicate unique_id` —
+any hit means one of the blocks above is still present, and the old
+inaccurate sensor is the one being used.
+
+`sensor.solar_total_yield` is **confirmed genuinely kWh** — the unit is
+declared directly on its Modbus input register (slave 1, address 72), so
+`sensor.solar_daily_*`, `sensor.solar_today_kwh`, `sensor.saving_today_*`,
+`sensor.energy_cost_without_battery_today` and the lifetime accumulators
+fed by the nightly rollup all carry no unit ambiguity. The separate
+`sensor.solar_today` UI helper is still unverified — see README.md's
+"Outstanding: the `sensor.solar_today` unit", which now affects only the
+yesterday figures.
 
 ## Notes
-- solar_today is in Wh not kWh — divide by 1000 when displaying
+- **Home Assistant owns the data; the panel only renders it.** No tariff-period
+  boundary math, no unit conversion, no rate tables in JS — anything that could
+  drift gets a template sensor in the package instead. The panel's JS is
+  restricted to number→string formatting.
+- solar_today's unit is unverified (long assumed Wh) — don't use it; use
+  sensor.solar_today_kwh. See README.md's "Outstanding" section.
+- battery_power sign: unverified. The panel isolates it in the single constant
+  `BATTERY_POSITIVE_IS_CHARGE` in energy-dashboard.js — flip that one line if
+  charge/discharge reads backwards.
 - battery_power_net sign: check carefully, may need inversion depending on charge/discharge direction
 - grid_power_net: positive = importing, negative = exporting
 - Total saving sensors backed by input_number helpers that accumulate via midnight automation
