@@ -9,7 +9,11 @@ import {
   fmtNum,
   buildPowerFlow,
   buildRateNow,
-  buildEnergyToday,
+  buildEnergyTable,
+  buildPeriodTotals,
+  ribbonSegments,
+  buildTariffRibbon,
+  batteryCycleSeries,
   buildFinancialSummary,
   buildSystemStats,
   renderTabsHTML,
@@ -259,20 +263,84 @@ test('buildRateNow refuses to guess when the tariff period sensor is not a known
   assert.equal(missing.rateText, DASH);
 });
 
-test('buildEnergyToday sources solar from the unambiguous kWh sensor', () => {
-  const rows = buildEnergyToday(liveStates);
-  assert.deepEqual(rows[0], { label: 'Solar', text: '8.42 kWh' });
+test('buildEnergyTable covers every real energy flow across today/yesterday/lifetime', () => {
+  const rows = buildEnergyTable(liveStates);
   assert.deepEqual(rows.map(r => r.label), [
-    'Solar',
-    'Battery Charged',
-    'Battery Discharged',
-    'Grid Import',
-    'Grid Export',
-    'Home Load',
+    'Solar', 'Grid import', 'Grid export', 'Battery charged',
+    'Battery discharged', 'Home load', 'Backup load',
   ]);
-  assert.equal(rows[5].text, '11.70 kWh');
+  assert.equal(rows[0].today, '8.42 kWh');
 
-  for (const r of buildEnergyToday({})) assert.equal(r.text, DASH);
+  // Backup load has no yesterday sensor; it must dash, not fabricate a zero
+  assert.equal(rows[6].yesterday, DASH);
+
+  for (const r of buildEnergyTable({})) {
+    assert.equal(r.today, DASH);
+    assert.equal(r.lifetime, DASH);
+  }
+});
+
+test('buildPeriodTotals exposes month and year figures', () => {
+  const rows = buildPeriodTotals({
+    'sensor.solis_s6_eh1p_household_load_month_energy': { state: '71' },
+    'sensor.solis_s6_eh1p_household_load_year_energy': { state: '1198' },
+  });
+  assert.deepEqual(rows[0], { label: 'Home load', month: '71.00 kWh', year: '1198.00 kWh' });
+  assert.equal(rows[1].month, DASH);
+});
+
+test('ribbonSegments merges consecutive hours into proportional bands', () => {
+  const hours = [
+    'night','night','night_boost','night_boost','night_boost','night','night','night',
+    'day','day','day','day','day','day','day','day','day','peak','peak',
+    'day','day','day','day','night',
+  ];
+  const segs = ribbonSegments(hours);
+  assert.deepEqual(segs.map(s => `${s.key}@${s.start}x${s.span}`), [
+    'night@0x2', 'night_boost@2x3', 'night@5x3', 'day@8x9', 'peak@17x2', 'day@19x4', 'night@23x1',
+  ]);
+  // widths must tile the whole day exactly
+  assert.equal(segs.reduce((a, s) => a + s.span, 0), 24);
+  assert.ok(Math.abs(segs.reduce((a, s) => a + s.pct, 0) - 100) < 1e-9);
+
+  // anything that is not a full 24-hour map is refused rather than half-drawn
+  assert.deepEqual(ribbonSegments(['day']), []);
+  assert.deepEqual(ribbonSegments(undefined), []);
+});
+
+test('buildTariffRibbon reads the schedule from HA, not from JS', () => {
+  const hours = Array(24).fill('day');
+  hours[17] = hours[18] = 'peak';
+  const states = {
+    'sensor.current_tariff_period': {
+      state: 'peak',
+      attributes: { hours, rates: { day: 0.3233, peak: 0.4508 } },
+    },
+    'sensor.electricity_rate': { state: '0.4508' },
+  };
+  const r = buildTariffRibbon(states, new Date('2026-09-05T12:00:00'));
+  assert.equal(r.activeKey, 'peak');
+  assert.equal(r.label, 'Peak');
+  assert.equal(r.rateText, '0.4508');
+  assert.equal(r.nowPct, 50);
+  assert.equal(r.segments.find(s => s.key === 'peak').rate, 0.4508);
+
+  // with no schedule published there is nothing to draw, and nothing invented
+  const bare = buildTariffRibbon({});
+  assert.deepEqual(bare.segments, []);
+  assert.equal(bare.activeKey, null);
+  assert.equal(bare.rateText, DASH);
+});
+
+test('batteryCycleSeries sums charge and discharge across tariff periods', () => {
+  const out = batteryCycleSeries({
+    'sensor.battery_charge_daily_night_boost': [{ start: '2026-09-01', sum: 0 }, { start: '2026-09-02', sum: 9 }],
+    'sensor.battery_charge_daily_day': [{ start: '2026-09-01', sum: 0 }, { start: '2026-09-02', sum: 5 }],
+    'sensor.battery_discharge_daily_day': [{ start: '2026-09-01', sum: 0 }, { start: '2026-09-02', sum: 8 }],
+  });
+  assert.deepEqual(out.Charged, [{ day: '2026-09-02', value: 14 }]);
+  assert.deepEqual(out.Discharged, [{ day: '2026-09-02', value: 8 }]);
+  assert.deepEqual(batteryCycleSeries({}), { Charged: [], Discharged: [] });
 });
 
 test('buildFinancialSummary lays out today/yesterday/total per metric', () => {
@@ -324,25 +392,31 @@ test('renderTabsHTML marks exactly one tab active', () => {
   assert.match(html, /data-tab="live" class="tab"/);
 });
 
-test('renderLiveHTML highlights the active period only when it is known', () => {
-  const known = renderLiveHTML(liveStates);
-  assert.match(known, /class="rate-period active"/);
+test('renderLiveHTML names the active tariff period and tints it', () => {
+  const hours = Array(24).fill('day');
+  const known = renderLiveHTML({
+    ...liveStates,
+    'sensor.current_tariff_period': { state: 'day', attributes: { hours, rates: { day: 0.3233 } } },
+  });
+  assert.match(known, /class="eyebrow" style="color:#f0a12e">Day</, 'active period is named and tinted');
+  assert.match(known, /class="seg on"/, 'the ribbon marks the band in force');
   assert.match(known, /2\.45 kW/);
 
   const unknown = renderLiveHTML({});
-  assert.doesNotMatch(unknown, /active/);
+  assert.doesNotMatch(unknown, /class="seg on"/, 'no band is marked when the period is unknown');
   assert.match(unknown, /—/);
 });
 
 test('the Live tab stays simple: no money on it, money lives on Financial', () => {
   const live = renderLiveHTML(liveStates);
   // The current rate is live data and belongs here; running totals do not.
-  assert.match(live, /€0\.3233\/kWh/, 'the rate in force now is live data');
+  assert.match(live, /0\.3233/, 'the rate in force now is live data');
   for (const total of ['312.45', '48.20', '2.31', '1.79']) {
     assert.ok(!live.includes(total), `Live tab should not carry the running total ${total}`);
   }
   assert.doesNotMatch(live, /Saving|Arbitrage|Avoided/, 'financial labels belong on the Financial tab');
-  assert.match(live, /soc-fill/, 'Live tab should show battery state of charge');
+  assert.match(live, /class="ribbon"/, 'the tariff ribbon is the Live hero');
+  assert.match(live, /class="soc-bar"/, 'Live tab should show battery state of charge');
 
   const fin = renderFinancialHTML(liveStates);
   assert.match(fin, /€312\.45/);

@@ -17,6 +17,10 @@ const DASH = '—';
 // inflated calculation and are not comparable with what follows.
 const MODEL_CHANGE_DATE = '2026-09-05';
 
+// Price ladder: cheap -> expensive. Used ONLY in tariff contexts, never
+// alongside the flow colours below, so the two systems never compete.
+const TARIFF = {'night_boost': '#14b8a6', 'night': '#6366f1', 'day': '#f0a12e', 'peak': '#ef4a5a'};
+
 const COLORS = {
   solar: '#f59e0b',
   battery: '#3b82f6',
@@ -191,19 +195,71 @@ export function buildRateNow(states) {
   };
 }
 
-const ENERGY_TODAY = [
-  ['Solar', 'sensor.solar_today_kwh'],
-  ['Battery Charged', 'sensor.solis_s6_eh1p_today_battery_charge_energy'],
-  ['Battery Discharged', 'sensor.solis_s6_eh1p_today_battery_discharge_energy'],
-  ['Grid Import', 'sensor.solis_s6_eh1p_today_energy_imported_from_grid'],
-  ['Grid Export', 'sensor.solis_s6_eh1p_today_energy_fed_into_grid'],
-  ['Home Load', 'sensor.solis_s6_eh1p_household_load_today_energy'],
+// Every real energy flow the inverter and CT meter report, today / yesterday /
+// lifetime. Lifetime grid figures use the CT meter's readings rather than the
+// inverter's whole-kWh integer counters, because they carry 2 decimal places.
+// A null column means no sensor exists for that combination and renders as a
+// dash rather than a fabricated zero.
+const ENERGY_FLOWS = [
+  ['Solar', 'sensor.solar_today_kwh', 'sensor.solar_yesterday_kwh', 'sensor.solar_total_yield'],
+  [
+    'Grid import',
+    'sensor.solis_s6_eh1p_today_energy_imported_from_grid',
+    'sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid',
+    'sensor.solis_s6_eh1p_meter_total_active_energy_from_grid',
+  ],
+  [
+    'Grid export',
+    'sensor.solis_s6_eh1p_today_energy_fed_into_grid',
+    'sensor.solis_s6_eh1p_yesterday_energy_fed_into_grid',
+    'sensor.solis_s6_eh1p_meter_total_active_energy_to_grid',
+  ],
+  [
+    'Battery charged',
+    'sensor.solis_s6_eh1p_today_battery_charge_energy',
+    'sensor.solis_s6_eh1p_yesterday_battery_charge_energy',
+    'sensor.solis_s6_eh1p_total_battery_charge_energy',
+  ],
+  [
+    'Battery discharged',
+    'sensor.solis_s6_eh1p_today_battery_discharge_energy',
+    'sensor.solis_s6_eh1p_yesterday_battery_discharge_energy',
+    'sensor.solis_s6_eh1p_total_battery_discharge_energy',
+  ],
+  [
+    'Home load',
+    'sensor.solis_s6_eh1p_household_load_today_energy',
+    'sensor.solis_s6_eh1p_yesterday_energy_consumption',
+    'sensor.solis_s6_eh1p_household_load_total_energy',
+  ],
+  [
+    'Backup load',
+    'sensor.solis_s6_eh1p_backup_load_today_energy',
+    null,
+    'sensor.solis_s6_eh1p_backup_load_total_energy',
+  ],
 ];
 
-export function buildEnergyToday(states) {
-  return ENERGY_TODAY.map(([label, entityId]) => ({
+export function buildEnergyTable(states) {
+  const cell = id => (id === null ? DASH : fmtEnergy(numOrNull(states, id)));
+  return ENERGY_FLOWS.map(([label, today, yesterday, lifetime]) => ({
     label,
-    text: fmtEnergy(numOrNull(states, entityId)),
+    today: cell(today),
+    yesterday: cell(yesterday),
+    lifetime: cell(lifetime),
+  }));
+}
+
+const PERIOD_TOTALS = [
+  ['Home load', 'sensor.solis_s6_eh1p_household_load_month_energy', 'sensor.solis_s6_eh1p_household_load_year_energy'],
+  ['Backup load', 'sensor.solis_s6_eh1p_backup_load_month_energy', 'sensor.solis_s6_eh1p_backup_load_year_energy'],
+];
+
+export function buildPeriodTotals(states) {
+  return PERIOD_TOTALS.map(([label, month, year]) => ({
+    label,
+    month: fmtEnergy(numOrNull(states, month)),
+    year: fmtEnergy(numOrNull(states, year)),
   }));
 }
 
@@ -296,6 +352,36 @@ export const HISTORY_ENERGY_IDS = [
   'sensor.grid_import_daily_day',
   'sensor.grid_import_daily_peak',
 ];
+
+export const HISTORY_BATTERY_IDS = [
+  'sensor.battery_charge_daily_night_boost',
+  'sensor.battery_charge_daily_night',
+  'sensor.battery_charge_daily_day',
+  'sensor.battery_charge_daily_peak',
+  'sensor.battery_discharge_daily_night_boost',
+  'sensor.battery_discharge_daily_night',
+  'sensor.battery_discharge_daily_day',
+  'sensor.battery_discharge_daily_peak',
+];
+
+// Charge and discharge summed across tariff periods, per day. The gap between
+// them is round-trip loss plus any change in stored energy across midnight.
+export function batteryCycleSeries(result) {
+  const sumOf = prefix => {
+    const totals = new Map();
+    for (const [id, rows] of Object.entries(result || {})) {
+      if (!id.startsWith(prefix)) continue;
+      for (const { day, value } of dailyDeltas(rows)) {
+        totals.set(day, Number(((totals.get(day) ?? 0) + value).toFixed(3)));
+      }
+    }
+    return [...totals].map(([day, value]) => ({ day, value }));
+  };
+  return {
+    Charged: sumOf('sensor.battery_charge_daily_'),
+    Discharged: sumOf('sensor.battery_discharge_daily_'),
+  };
+}
 
 export const HISTORY_MONEY_IDS = [
   'sensor.energy_saving_today',
@@ -391,6 +477,44 @@ export function alignSeries(seriesByKey) {
   return { days, datasets };
 }
 
+// ─── Tariff ribbon (the signature element) ────────────────────────────
+// The day drawn as proportional price bands. The schedule comes from
+// sensor.current_tariff_period's `hours` attribute so the boundaries live in
+// exactly one place (the HA package), not in a fifth copy here.
+
+export function ribbonSegments(hours) {
+  if (!Array.isArray(hours) || hours.length !== 24) return [];
+  const out = [];
+  for (let h = 0; h < 24; h++) {
+    const last = out[out.length - 1];
+    if (last && last.key === hours[h]) last.span += 1;
+    else out.push({ key: hours[h], start: h, span: 1 });
+  }
+  return out.map(seg => ({ ...seg, pct: (seg.span / 24) * 100 }));
+}
+
+export function buildTariffRibbon(states, now = new Date()) {
+  const attrs = states['sensor.current_tariff_period']?.attributes || {};
+  const rates = attrs.rates || {};
+  const segments = ribbonSegments(attrs.hours).map(seg => ({
+    ...seg,
+    label: PERIOD_LABELS[seg.key] || seg.key,
+    rate: rates[seg.key] ?? null,
+  }));
+  const rate = numOrNull(states, 'sensor.electricity_rate');
+  const active = strOrNull(states, 'sensor.current_tariff_period');
+  const isKnown = active !== null && Object.hasOwn(PERIOD_LABELS, active);
+  return {
+    segments,
+    activeKey: isKnown ? active : null,
+    label: isKnown ? PERIOD_LABELS[active] : DASH,
+    rate,
+    rateText: rate === null ? DASH : rate.toFixed(4),
+    // Fraction of the day elapsed, for the "now" marker.
+    nowPct: ((now.getHours() * 60 + now.getMinutes()) / 1440) * 100,
+  };
+}
+
 // ─── Live tab rendering ───────────────────────────────────────────────
 
 export function renderTabsHTML(tabs, activeKey) {
@@ -406,113 +530,136 @@ function renderStatRowsHTML(rows) {
   return rows.map(r => `<div class="stat"><span>${r.label}</span><b>${r.text}</b></div>`).join('');
 }
 
-export function renderLiveHTML(states) {
+function ribbonHTML(r) {
+  const segs = r.segments
+    .map(
+      s =>
+        `<span class="seg${r.activeKey === s.key ? ' on' : ''}" style="width:${s.pct}%;background:${TARIFF[s.key] || '#3a4150'}" title="${s.label}"></span>`
+    )
+    .join('');
+  const ticks = r.segments
+    .filter(s => s.start !== 0)
+    .map(s => `<span class="tick" style="left:${(s.start / 24) * 100}%">${String(s.start).padStart(2, '0')}</span>`)
+    .join('');
+  const marker = `<span class="now" style="left:${r.nowPct}%"></span>`;
+  return `<div class="ribbon">${segs}${marker}</div><div class="ticks">${ticks}</div>`;
+}
+
+export function renderLiveHTML(states, now = new Date()) {
+  const r = buildTariffRibbon(states, now);
   const flow = buildPowerFlow(states);
-  const rate = buildRateNow(states);
   const batt = buildBatteryStatus(states);
   const stats = buildSystemStats(states);
+  const accent = r.activeKey ? TARIFF[r.activeKey] : '#7d8797';
+  const pct = batt.soc === null ? 0 : Math.max(0, Math.min(100, batt.soc));
 
   const nodes = flow
     .map(
-      n =>
-        `<div class="node"><span class="node-label">${n.label}</span><b class="node-value" style="color:${n.color}">${n.text}</b></div>`
+      n => `<div class="node">
+        <span class="k">${n.label}</span>
+        <b class="v" style="color:${n.color}">${n.text}</b>
+      </div>`
     )
     .join('');
 
-  const chips = PERIODS.map(
-    p => `<span class="rate-period${rate.isKnown && rate.period === p.key ? ' active' : ''}">${p.label}</span>`
-  ).join('');
-
-  const pct = batt.soc === null ? 0 : Math.max(0, Math.min(100, batt.soc));
-
   return `
+    <section class="hero">
+      <span class="eyebrow" style="color:${accent}">${r.label}</span>
+      <div class="rate"><span class="cur">€</span>${r.rateText}<span class="per">/kWh</span></div>
+      ${ribbonHTML(r)}
+    </section>
     <section class="card">
-      <h3>Power Flow</h3>
-      <div class="flow">${nodes}</div>
+      <h3>Power</h3>
+      <div class="grid4">${nodes}</div>
     </section>
     <section class="card">
       <h3>Battery</h3>
-      <div class="soc-row">
-        <div class="soc-bar"><div class="soc-fill" style="width:${pct}%"></div></div>
-        <b class="soc-value">${batt.socText}</b>
-      </div>
-      <div class="stats">
-        <div class="stat"><span>Voltage</span><b>${batt.voltText}</b></div>
-        <div class="stat"><span>Current</span><b>${batt.currText}</b></div>
-        <div class="stat"><span>Health</span><b>${batt.sohText}</b></div>
-      </div>
-    </section>
-    <section class="card">
-      <h3>Rate Now</h3>
-      <div class="rate-value">${rate.rateText}</div>
-      <div class="rate-periods">${chips}</div>
+      <div class="soc"><div class="soc-bar"><i style="width:${pct}%"></i></div><b>${batt.socText}</b></div>
+      <dl class="pairs">
+        <div><dt>Voltage</dt><dd>${batt.voltText}</dd></div>
+        <div><dt>Current</dt><dd>${batt.currText}</dd></div>
+        <div><dt>Health</dt><dd>${batt.sohText}</dd></div>
+      </dl>
     </section>
     <section class="card">
       <h3>System</h3>
-      <div class="stats">${renderStatRowsHTML(stats)}</div>
+      <dl class="pairs">${stats.map(x => `<div><dt>${x.label}</dt><dd>${x.text}</dd></div>`).join('')}</dl>
     </section>
   `;
 }
 
-export function renderFinancialHTML(states) {
-  const chain = buildMoneyChain(states);
-  const summary = buildFinancialSummary(states);
-  const periods = buildFinancialRows(states);
+function tableHTML(head, rows) {
+  return `<div class="scroll"><table>
+    <thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ''}>${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
 
-  const chainRows = chain
-    .map(
-      r =>
-        `<tr class="${r.op === '=' ? 'chain-total' : ''}"><td class="chain-op">${r.op}</td><td>${r.label}</td><td>${r.today}</td><td>${r.yesterday}</td></tr>`
-    )
+export function renderHistoryHTML(states) {
+  const energy = buildEnergyTable(states)
+    .map(r => `<tr><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td><td class="num">${r.lifetime}</td></tr>`)
+    .join('');
+  const totals = buildPeriodTotals(states)
+    .map(r => `<tr><th scope="row">${r.label}</th><td class="num">${r.month}</td><td class="num">${r.year}</td></tr>`)
     .join('');
 
-  const summaryRows = summary
-    .map(r => `<tr><td>${r.label}</td><td>${r.today}</td><td>${r.yesterday}</td><td>${r.total}</td></tr>`)
+  return `
+    <section class="card">
+      <h3>Energy</h3>
+      ${tableHTML(['Flow', 'Today', 'Yesterday', 'Lifetime'], energy)}
+    </section>
+    <section class="card">
+      <h3>Longer run</h3>
+      ${tableHTML(['Flow', 'This month', 'This year'], totals)}
+    </section>
+    <section class="card">
+      <h3>Grid import by tariff <em>30 days</em></h3>
+      <div class="chart"><canvas id="chart-import"></canvas></div>
+    </section>
+    <section class="card">
+      <h3>Battery cycled <em>30 days</em></h3>
+      <div class="chart"><canvas id="chart-battery"></canvas></div>
+      <p class="note">The gap between charged and discharged is round-trip loss plus whatever stayed in the battery overnight.</p>
+    </section>
+    <section class="card">
+      <h3>Net saving per day <em>30 days</em></h3>
+      <div class="chart"><canvas id="chart-saving"></canvas></div>
+      <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, before charge cost was subtracted; they are corrected here using that day&rsquo;s recorded charge cost. ${MODEL_CHANGE_DATE} itself is omitted &mdash; its figure spans both models and the meter reset, so it cannot be reconstructed.</p>
+    </section>
+    <p class="note" id="history-note">Loading statistics&hellip;</p>
+  `;
+}
+
+export function renderFinancialHTML(states) {
+  const chain = buildMoneyChain(states)
+    .map(r => `<tr class="${r.op === '=' ? 'sum' : ''}"><td class="op">${r.op}</td><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td></tr>`)
+    .join('');
+  const detail = buildFinancialSummary(states)
+    .map(r => `<tr><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td><td class="num">${r.total}</td></tr>`)
+    .join('');
+  const periods = buildFinancialRows(states)
+    .map(
+      r => `<tr><th scope="row"><span class="dot" style="background:${TARIFF[r.key]}"></span>${r.period}</th>
+        <td class="num">${fmtEuro(r.todaySaving)}</td><td class="num">${fmtEuro(r.todayArbitrage)}</td>
+        <td class="num">${fmtEuro(r.lifetimeSaving)}</td><td class="num">${fmtEuro(r.lifetimeArbitrage)}</td></tr>`
+    )
     .join('');
 
   return `
     <section class="card">
       <h3>How the saving is made</h3>
-      <table>
-        <thead><tr><th></th><th>Metric</th><th>Today</th><th>Yesterday</th></tr></thead>
-        <tbody>${chainRows}</tbody>
-      </table>
-      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it. Subtracting what you paid to charge gives the net saving.</p>
+      ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain)}
+      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it. Take off what you paid to charge, and what is left is the saving.</p>
     </section>
     <section class="card">
       <h3>Detail</h3>
-      <table>
-        <thead><tr><th>Metric</th><th>Today</th><th>Yesterday</th><th>Lifetime</th></tr></thead>
-        <tbody>${summaryRows}</tbody>
-      </table>
+      ${tableHTML(['Metric', 'Today', 'Yesterday', 'Lifetime'], detail)}
     </section>
     <section class="card">
       <h3>By tariff period</h3>
-      <table>
-        <thead><tr><th>Period</th><th>Today Saving</th><th>Today Arbitrage</th><th>Lifetime Saving</th><th>Lifetime Arbitrage</th></tr></thead>
-        <tbody>${renderRowsHTML(periods)}</tbody>
-      </table>
-      <p class="note">Night Boost is normally negative &mdash; energy goes in and none comes out. Day and Peak are where it is paid back.</p>
+      ${tableHTML(['Period', 'Saving today', 'Arbitrage today', 'Saving lifetime', 'Arbitrage lifetime'], periods)}
+      <p class="note">Night Boost runs negative by design &mdash; energy goes in and none comes out. Day and Peak are where it comes back.</p>
     </section>
-  `;
-}
-
-export function renderHistoryHTML(states) {
-  return `
-    <section class="card">
-      <h3>Energy today</h3>
-      <div class="stats">${renderStatRowsHTML(buildEnergyToday(states))}</div>
-    </section>
-    <section class="card">
-      <h3>Grid import by tariff &mdash; last 30 days</h3>
-      <div class="chart"><canvas id="chart-import"></canvas></div>
-    </section>
-    <section class="card">
-      <h3>Net saving per day &mdash; last 30 days</h3>
-      <div class="chart"><canvas id="chart-saving"></canvas></div>
-      <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, without subtracting what was paid to charge the battery. They are corrected here by subtracting that day&rsquo;s recorded charge cost, so the whole series is on the same net basis &mdash; the stored history itself is unchanged. ${MODEL_CHANGE_DATE} itself is omitted: its recorded figure spans both models and the meter reset, so it cannot be reconstructed.</p>
-    </section>
-    <p class="note" id="history-note">Loading statistics&hellip;</p>
   `;
 }
 
@@ -531,52 +678,144 @@ if (typeof HTMLElement !== 'undefined') {
     connectedCallback() {
       if (this._initialized) return;
       this._initialized = true;
-      this.style.cssText = 'display:block;height:100vh;background:#0d0f14;color:#e2e8f0;font-family:Inter,sans-serif;overflow:auto;';
+      this.style.cssText = 'display:block;min-height:100vh;background:#0b0e14;color:#e6ebf2;font-family:Inter,system-ui,-apple-system,sans-serif;overflow-x:hidden;';
       // Hardcoded hex throughout, never CSS variables — HA injects its own
       // theme variables into the page and would override them.
       this.innerHTML = `
         <style>
-          #tabs { display: flex; gap: 4px; padding: 12px 16px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-          .tab { background: none; border: none; border-bottom: 2px solid transparent; color: #6b7280; font: 500 14px Inter, sans-serif; padding: 8px 14px; cursor: pointer; }
-          .tab.active { color: #e2e8f0; border-bottom-color: #22c55e; }
-          .panel { padding: 16px; }
+          /* Instrument-panel aesthetic: the numbers are the typography. Hardcoded
+             hex throughout — HA injects its own CSS variables and would win. */
+          #dashboard { max-width: 980px; margin: 0 auto; padding: 0 0 40px; }
+          #dashboard *, #dashboard *::before, #dashboard *::after { box-sizing: border-box; }
+
+          #tabs {
+            position: sticky; top: 0; z-index: 5; display: flex; gap: 2px;
+            padding: 6px 12px 0; background: rgba(11,14,20,0.92);
+            backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.06);
+            overflow-x: auto; scrollbar-width: none;
+          }
+          #tabs::-webkit-scrollbar { display: none; }
+          .tab {
+            flex: 0 0 auto; min-height: 44px; padding: 0 16px; cursor: pointer;
+            background: none; border: 0; border-bottom: 2px solid transparent;
+            color: #7d8797; font: 600 13px/44px Inter, system-ui, sans-serif;
+            letter-spacing: 0.04em; white-space: nowrap;
+          }
+          .tab:hover { color: #b9c2d0; }
+          .tab.active { color: #e6ebf2; border-bottom-color: #e6ebf2; }
+          .tab:focus-visible { outline: 2px solid #14b8a6; outline-offset: -2px; }
+
+          .panel { padding: 12px; display: grid; gap: 12px; }
           .panel[hidden] { display: none; }
-          h2 { font-weight: 600; margin: 0 0 12px; }
-          h3 { color: #6b7280; font: 500 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 12px; }
-          .card { background: #13161d; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 16px; margin-bottom: 12px; max-width: 720px; }
-          table { border-collapse: collapse; width: 100%; max-width: 640px; }
-          th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-family: 'JetBrains Mono', monospace; font-size: 14px; }
-          th { color: #6b7280; font-family: Inter, sans-serif; font-weight: 500; }
-          .period-night_boost td:first-child, .period-night td:first-child { border-left: 3px solid #3b82f6; }
-          .period-day td:first-child { border-left: 3px solid #f59e0b; }
-          .period-peak td:first-child { border-left: 3px solid #ef4444; }
-          .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
-          .node { display: flex; flex-direction: column; gap: 4px; }
-          .node-label { color: #6b7280; font-size: 12px; }
-          .node-value { font: 600 18px 'JetBrains Mono', monospace; }
-          .rate-value { font: 600 28px 'JetBrains Mono', monospace; margin-bottom: 12px; }
-          .rate-periods { display: flex; flex-wrap: wrap; gap: 6px; }
-          .rate-period { border: 1px solid rgba(255,255,255,0.06); border-radius: 999px; color: #6b7280; font-size: 12px; padding: 4px 12px; }
-          .rate-period.active { background: rgba(34,197,94,0.15); border-color: #22c55e; color: #22c55e; }
-          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 20px; }
-          .stat { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; }
-          .stat span { color: #6b7280; font-size: 13px; }
-          .stat b { font: 500 14px 'JetBrains Mono', monospace; }
-          .soc-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-          .soc-bar { flex: 1; height: 10px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
-          .soc-fill { height: 100%; background: #3b82f6; border-radius: 999px; }
-          .soc-value { font: 600 20px 'JetBrains Mono', monospace; min-width: 64px; text-align: right; }
-          .chart { position: relative; height: 260px; }
-          .note { color: #6b7280; font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 720px; }
-          .note.warn { color: #f59e0b; }
-          .chart-empty { display: flex; align-items: center; justify-content: center; text-align: center; color: #6b7280; font-size: 13px; padding: 0 24px; }
-          .chain-op { color: #6b7280; width: 1.5em; font-family: 'JetBrains Mono', monospace; }
-          .chain-total td { border-top: 1px solid rgba(255,255,255,0.18); font-weight: 600; color: #22c55e; }
+
+          .hero, .card {
+            background: #141922; border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px; padding: 16px;
+          }
+          .hero { background: linear-gradient(180deg, #171d28 0%, #12172010 100%), #141922; padding: 20px 16px 18px; }
+
+          h3 {
+            margin: 0 0 14px; color: #7d8797;
+            font: 600 10px Inter, system-ui, sans-serif;
+            letter-spacing: 0.18em; text-transform: uppercase;
+          }
+          h3 em { font-style: normal; color: #4d5666; letter-spacing: 0.08em; float: right; text-transform: none; }
+
+          .eyebrow {
+            display: block; font: 700 11px Inter, system-ui, sans-serif;
+            letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 6px;
+          }
+          .rate {
+            font: 600 clamp(40px, 13vw, 68px)/1 ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+            font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+            color: #e6ebf2; margin-bottom: 18px;
+          }
+          .rate .cur { color: #7d8797; margin-right: 2px; }
+          .rate .per { font-size: 0.3em; letter-spacing: 0.06em; color: #7d8797; margin-left: 6px; }
+
+          /* The signature: the day as proportional price bands. */
+          .ribbon { position: relative; display: flex; height: 14px; border-radius: 7px; overflow: hidden; }
+          .ribbon .seg { display: block; height: 100%; opacity: 0.42; transition: opacity 0.3s ease; }
+          .ribbon .seg.on { opacity: 1; }
+          .ribbon .now {
+            position: absolute; top: -3px; width: 2px; height: 20px; margin-left: -1px;
+            background: #e6ebf2; border-radius: 1px; box-shadow: 0 0 6px rgba(230,235,242,0.9);
+          }
+          .ticks { position: relative; height: 14px; margin-top: 5px; }
+          .ticks .tick {
+            position: absolute; transform: translateX(-50%);
+            font: 500 10px ui-monospace, 'JetBrains Mono', monospace; color: #4d5666;
+          }
+
+          .grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
+          .node { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+          .node .k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+          .node .v {
+            font: 600 clamp(17px, 5vw, 21px) ui-monospace, 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+            overflow-wrap: anywhere;
+          }
+
+          .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+          .soc-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
+          .soc-bar i { display: block; height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.6s ease; }
+          .soc b {
+            font: 600 22px ui-monospace, 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums; min-width: 62px; text-align: right;
+          }
+
+          .pairs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; margin: 0; }
+          .pairs > div {
+            display: flex; justify-content: space-between; gap: 10px;
+            padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+          }
+          .pairs dt { color: #7d8797; font-size: 12px; }
+          .pairs dd {
+            margin: 0; font: 500 13px ui-monospace, 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere;
+          }
+
+          .scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: thin; }
+          table { border-collapse: collapse; width: 100%; min-width: 320px; }
+          th, td { text-align: left; padding: 9px 10px 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
+          thead th {
+            color: #4d5666; font: 600 10px Inter, system-ui, sans-serif;
+            letter-spacing: 0.12em; text-transform: uppercase; padding-bottom: 8px;
+          }
+          tbody th { font: 500 13px Inter, system-ui, sans-serif; color: #b9c2d0; }
+          td.num, th.num {
+            text-align: right; padding-right: 0;
+            font: 500 13px ui-monospace, 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
+          }
+          thead th.num { font-family: Inter, system-ui, sans-serif; }
+          tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+          td.op { color: #4d5666; width: 1.4em; padding-right: 4px; font-family: ui-monospace, monospace; }
+          tr.sum th, tr.sum td { border-top: 1px solid rgba(255,255,255,0.16); color: #34d399; font-weight: 600; }
+          .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+          .chart { position: relative; height: 220px; }
+          .chart-empty {
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            color: #7d8797; font-size: 13px; padding: 0 20px; line-height: 1.5;
+          }
+          .note { color: #7d8797; font-size: 12px; line-height: 1.55; margin: 12px 0 0; }
+
+          @media (min-width: 620px) {
+            .panel { padding: 16px; gap: 16px; }
+            .hero, .card { padding: 20px; }
+            .grid4 { grid-template-columns: repeat(4, 1fr); }
+            .pairs { grid-template-columns: repeat(3, 1fr); }
+            .scroll { margin: 0 -20px; padding: 0 20px; }
+            .chart { height: 260px; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            #dashboard *, #dashboard *::before { transition: none !important; animation: none !important; }
+          }
         </style>
-        <div id="tabs"></div>
+        <div id="dashboard"><div id="tabs"></div>
         <div id="panel-live" class="panel"></div>
         <div id="panel-history" class="panel"></div>
-        <div id="panel-financial" class="panel"></div>
+        <div id="panel-financial" class="panel"></div></div>
       `;
       // Delegated, so the listener survives the tab strip being re-rendered.
       this.querySelector('#tabs').addEventListener('click', e => {
@@ -644,13 +883,10 @@ if (typeof HTMLElement !== 'undefined') {
       const note = () => this.querySelector('#history-note');
       try {
         await this._loadChartJS();
-        const [energy, money] = await Promise.all([
-          this._hass.connection.sendMessagePromise(
-            statisticsRequest(HISTORY_ENERGY_IDS, 30, ['sum'])
-          ),
-          this._hass.connection.sendMessagePromise(
-            statisticsRequest(HISTORY_MONEY_IDS, 30, ['max'])
-          ),
+        const [energy, battery, money] = await Promise.all([
+          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_ENERGY_IDS, 30, ['sum'])),
+          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_BATTERY_IDS, 30, ['sum'])),
+          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_MONEY_IDS, 30, ['max'])),
         ]);
 
         const importSeries = {};
@@ -665,6 +901,13 @@ if (typeof HTMLElement !== 'undefined') {
             'chart-import',
             'No daily statistics yet. The per-tariff meters start accumulating from their first full day, so this fills in one day at a time.'
           );
+        }
+
+        const cycles = alignSeries(batteryCycleSeries(battery));
+        if (cycles.days.length) {
+          this._drawGrouped('chart-battery', cycles, 'kWh');
+        } else {
+          this._empty('chart-battery', 'No daily statistics yet. Fills in once the battery meters complete their first full day.');
         }
 
         const savingAligned = alignSeries({
@@ -697,21 +940,32 @@ if (typeof HTMLElement !== 'undefined') {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#e2e8f0', boxWidth: 12 } } },
+          plugins: { legend: { labels: { color: '#b9c2d0', boxWidth: 10, boxHeight: 10, font: { size: 11 } } } },
           scales: {
-            x: { stacked: true, ticks: { color: '#6b7280', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-            y: { stacked: true, ticks: { color: '#6b7280', callback: v => `${v}${unit === '\u20ac' ? '' : ' '}${unit}` }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            x: { stacked: true, ticks: { color: '#4d5666', maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+            y: { stacked: true, ticks: { color: '#4d5666', font: { size: 10 }, callback: v => `${v}${unit === '\u20ac' ? '' : ' '}${unit}` }, grid: { color: 'rgba(255,255,255,0.05)' } },
           },
         },
       };
     }
 
     _drawStacked(canvasId, { days, datasets }, unit) {
-      const colors = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'];
+      const colors = [TARIFF.night_boost, TARIFF.night, TARIFF.day, TARIFF.peak];
       const sets = Object.entries(datasets).map(([label, data], i) => ({
         label, data, backgroundColor: colors[i % colors.length],
       }));
       this._mount(canvasId, this._chartBase(days, sets, unit));
+    }
+
+    _drawGrouped(canvasId, { days, datasets }, unit) {
+      const colors = { Charged: '#6366f1', Discharged: '#14b8a6' };
+      const sets = Object.entries(datasets).map(([label, data]) => ({
+        label, data, backgroundColor: colors[label] || '#7d8797',
+      }));
+      const cfg = this._chartBase(days, sets, unit);
+      cfg.options.scales.x.stacked = false;
+      cfg.options.scales.y.stacked = false;
+      this._mount(canvasId, cfg);
     }
 
     _drawBars(canvasId, { days, datasets }, unit) {

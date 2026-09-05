@@ -685,6 +685,28 @@ template:
         unique_id: current_tariff_period
         icon: mdi:clock-outline
         state: "{{ states('select.grid_import_daily') }}"
+        attributes:
+          # The panel draws a 24-hour tariff ribbon. Rather than reimplement the
+          # boundaries in JS -- a fifth copy of logic that has already caused
+          # drift bugs here -- the schedule is published as an hour-by-hour map
+          # generated from the SAME conditions as the Tariff Period Sync
+          # automation below. Change the boundaries in one place and the ribbon,
+          # the meters and the accounting all move together.
+          #
+          # Note this is not a simple start/end table: 19:00-23:00 falls through
+          # to `day`, and `night` is split either side of the Night Boost window,
+          # so an hour map is the honest representation.
+          hours: >
+            {% set ns = namespace(out=[]) %}
+            {% for h in range(24) %}
+              {% if h >= 2 and h < 5 %}{% set ns.out = ns.out + ['night_boost'] %}
+              {% elif h >= 17 and h < 19 %}{% set ns.out = ns.out + ['peak'] %}
+              {% elif h >= 23 or h < 8 %}{% set ns.out = ns.out + ['night'] %}
+              {% else %}{% set ns.out = ns.out + ['day'] %}{% endif %}
+            {% endfor %}
+            {{ ns.out }}
+          rates: >
+            {{ {'night_boost': 0.0824, 'night': 0.2438, 'day': 0.3233, 'peak': 0.4508} }}
 
       # Replaces the hour-based template of the same unique_id in the host's
       # configuration.yaml — that block must be deleted there, see README.

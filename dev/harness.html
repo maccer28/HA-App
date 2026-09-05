@@ -38,8 +38,16 @@
           'sensor.solis_s6_eh1p_battery_discharge_power': { state: '127' },
           'sensor.solis_s6_eh1p_household_load_power': { state: '450' },
 
-          'sensor.current_tariff_period': { state: 'day' },
-          'sensor.electricity_rate': { state: '0.3233' },
+          'sensor.current_tariff_period': {
+            state: 'peak',
+            attributes: {
+              hours: ['night','night','night_boost','night_boost','night_boost','night','night','night',
+                      'day','day','day','day','day','day','day','day','day','peak','peak',
+                      'day','day','day','day','night'],
+              rates: { night_boost: 0.0824, night: 0.2438, day: 0.3233, peak: 0.4508 },
+            },
+          },
+          'sensor.electricity_rate': { state: '0.4508' },
 
           'sensor.solar_today_kwh': { state: '8.42' },
           'sensor.solis_s6_eh1p_today_battery_charge_energy': { state: '3.10' },
@@ -73,6 +81,27 @@
           'sensor.solis_s6_eh1p_a_phase_voltage': { state: '236.1' },
           'sensor.solis_s6_eh1p_grid_frequency': { state: '49.98' },
           'sensor.solis_s6_eh1p_status_string': { state: 'Generating' },
+
+          // energy table
+          'sensor.solar_yesterday_kwh': { state: '2.22' },
+          'sensor.solar_total_yield': { state: '366.73' },
+          'sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid': { state: '21.9' },
+          'sensor.solis_s6_eh1p_yesterday_energy_fed_into_grid': { state: '0.1' },
+          'sensor.solis_s6_eh1p_meter_total_active_energy_from_grid': { state: '1500.74' },
+          'sensor.solis_s6_eh1p_meter_total_active_energy_to_grid': { state: '35.85' },
+          'sensor.solis_s6_eh1p_yesterday_battery_charge_energy': { state: '14.6' },
+          'sensor.solis_s6_eh1p_yesterday_battery_discharge_energy': { state: '8.0' },
+          'sensor.solis_s6_eh1p_total_battery_charge_energy': { state: '521' },
+          'sensor.solis_s6_eh1p_total_battery_discharge_energy': { state: '487' },
+          'sensor.solis_s6_eh1p_yesterday_energy_consumption': { state: '12.8' },
+          'sensor.solis_s6_eh1p_household_load_total_energy': { state: '1198' },
+          'sensor.solis_s6_eh1p_household_load_month_energy': { state: '71' },
+          'sensor.solis_s6_eh1p_household_load_year_energy': { state: '1198' },
+          'sensor.solis_s6_eh1p_backup_load_today_energy': { state: '0.0' },
+          'sensor.solis_s6_eh1p_backup_load_total_energy': { state: '0' },
+          'sensor.solis_s6_eh1p_backup_load_month_energy': { state: '0' },
+          'sensor.solis_s6_eh1p_backup_load_year_energy': { state: '0' },
+          'sensor.solis_s6_eh1p_battery_soh': { state: '100' },
         },
       };
 
