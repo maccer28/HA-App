@@ -12,7 +12,7 @@ No token required. Runs in HA's JS context with full access to `hass` object.
   on the host directly, this is not something you manually copy to anymore
   (see `## Deploy` below)
 - **Inverter**: Solis S6-EH1P (1-Phase LV Hybrid, Protocol 33, Modbus via waveshare bridge at 192.168.1.254:502)
-- **Battery**: Lithtech TR8500WX — 51.2V nominal, 314Ah, 16.076kWh, Max charge/discharge 200A.
+- **Battery**: Lithtech TR8500WX — 51.2V nominal, 314Ah, **16.076kWh (confirmed)**, Max charge/discharge 200A.
   Communicates SOC to the inverter over RS485 (`select.battery_model` =
   "Lithium Battery LV(RS485)"), so the inverter uses the BMS's SOC and current
   limits directly. **`number.solis_s6_eh1p_battery_rated_capacity` reads 50 Ah
