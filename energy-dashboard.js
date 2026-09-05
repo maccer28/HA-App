@@ -13,6 +13,10 @@ export const TABS = [
 
 const DASH = '—';
 
+// The saving model changed here; statistics before this date use the old,
+// inflated calculation and are not comparable with what follows.
+const MODEL_CHANGE_DATE = '2026-09-05';
+
 const COLORS = {
   solar: '#f59e0b',
   battery: '#3b82f6',
@@ -471,6 +475,7 @@ export function renderHistoryHTML(states) {
     <section class="card">
       <h3>Net saving per day &mdash; last 30 days</h3>
       <div class="chart"><canvas id="chart-saving"></canvas></div>
+      <p class="note warn" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded under the previous model, which did not subtract the cost of charging the battery and overstated the daily figure by roughly half. Expect a step down on that date &mdash; it is a change in how the number is calculated, not in how the system performed.</p>
     </section>
     <p class="note" id="history-note">Loading statistics&hellip;</p>
   `;
@@ -528,6 +533,8 @@ if (typeof HTMLElement !== 'undefined') {
           .soc-value { font: 600 20px 'JetBrains Mono', monospace; min-width: 64px; text-align: right; }
           .chart { position: relative; height: 260px; }
           .note { color: #6b7280; font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 720px; }
+          .note.warn { color: #f59e0b; }
+          .chart-empty { display: flex; align-items: center; justify-content: center; text-align: center; color: #6b7280; font-size: 13px; padding: 0 24px; }
           .chain-op { color: #6b7280; width: 1.5em; font-family: 'JetBrains Mono', monospace; }
           .chain-total td { border-top: 1px solid rgba(255,255,255,0.18); font-weight: 600; color: #22c55e; }
         </style>
@@ -615,10 +622,24 @@ if (typeof HTMLElement !== 'undefined') {
         for (const id of HISTORY_ENERGY_IDS) {
           importSeries[PERIOD_LABELS[id.replace('sensor.grid_import_daily_', '')]] = dailyDeltas(energy?.[id]);
         }
-        this._drawStacked('chart-import', alignSeries(importSeries), 'kWh');
+        const importAligned = alignSeries(importSeries);
+        if (importAligned.days.length) {
+          this._drawStacked('chart-import', importAligned, 'kWh');
+        } else {
+          this._empty(
+            'chart-import',
+            'No daily statistics yet. The per-tariff meters start accumulating from their first full day, so this fills in one day at a time.'
+          );
+        }
 
-        const savingSeries = { 'Net saving': dailyMaxima(money?.['sensor.energy_saving_today']) };
-        this._drawBars('chart-saving', alignSeries(savingSeries), '\u20ac');
+        const savingAligned = alignSeries({ 'Net saving': dailyMaxima(money?.['sensor.energy_saving_today']) });
+        if (savingAligned.days.length) {
+          this._drawBars('chart-saving', savingAligned, '\u20ac');
+          const warn = this.querySelector('#saving-caveat');
+          if (warn) warn.hidden = false;
+        } else {
+          this._empty('chart-saving', 'No daily statistics yet.');
+        }
 
         const n = note();
         if (n) n.textContent = 'From Home Assistant long-term statistics. Raw history on this system is purged after ~10 days, so these are the daily rollups, which are kept indefinitely.';
@@ -660,6 +681,16 @@ if (typeof HTMLElement !== 'undefined') {
         backgroundColor: data.map(v => (v < 0 ? '#ef4444' : '#22c55e')),
       }));
       this._mount(canvasId, this._chartBase(days, sets, unit));
+    }
+
+    // A chart with no rows renders as an empty grid, which reads as broken
+    // rather than as "this metric has no history yet". Say which it is.
+    _empty(canvasId, message) {
+      const canvas = this.querySelector(`#${canvasId}`);
+      if (!canvas) return;
+      const box = canvas.parentElement;
+      box.classList.add('chart-empty');
+      box.textContent = message;
     }
 
     _mount(canvasId, config) {
