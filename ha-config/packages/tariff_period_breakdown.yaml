@@ -847,4 +847,4 @@ panel_custom:
     # HACS will report the new version while the panel keeps rendering the old
     # one. The fix then is to re-add a ?v=<version> here and bump it on every
     # release, which is what this line used to do.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.2.3
+    module_url: /hacsfiles/HA-App/energy-dashboard.js
