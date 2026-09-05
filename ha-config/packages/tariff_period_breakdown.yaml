@@ -14,6 +14,12 @@
 # together they are about 40% of the bill, which is why the dashboard surfaces
 # standing charge share rather than hiding it inside the cost.
 #
+# Band windows (EV 02:00-05:00, Peak 17:00-19:00, Night 23:00-08:00, Day
+# otherwise -- note that includes 19:00-23:00) are confirmed correct against the
+# supplier's tariff. The Tariff Period Sync automation below is the single place
+# they are defined; sensor.current_tariff_period republishes them as an hour map
+# for the panel's ribbon.
+#
 # Rates rose on 20/07/2026. If they change again, they must be updated in every
 # template below -- they are deliberately literal rather than indirected through
 # helpers, but that means a change touches many lines. Search for the old value.
@@ -1024,4 +1030,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.4.0
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.4.1
