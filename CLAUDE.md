@@ -14,7 +14,23 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 - **Inverter**: Solis S6-EH1P (1-Phase LV Hybrid, Protocol 33, Modbus via waveshare bridge at 192.168.1.254:502)
 - **Battery**: Lithtech TR8500WX — 51.2V nominal, 314Ah, 16.076kWh, Max charge/discharge 200A
 - **Solar**: AC-coupled, separate Modbus inverter on waveshare bridge slave 1
-- **Tariff**: Bord Gais EV Smart — Night Boost 02:00-05:00 €0.0824, Night 23:00-08:00 €0.2438, Day 08:00-17:00 €0.3233, Peak 17:00-19:00 €0.4508, Standing €0.9164/day
+- **Tariff** (from the 29/07-28/08/2026 bill; rates rose 20/07/2026). The bill
+  quotes ex-VAT and adds 9% at the end; the package stores **VAT-inclusive**
+  rates, because that is what the money costs:
+
+  | Band | Window | Billed ex-VAT | Used in package (inc 9%) |
+  |---|---|---|---|
+  | EV / Night Boost | 02:00-05:00 | 0.1030 | **0.1123** |
+  | Night | 23:00-08:00 | 0.2549 | **0.2778** |
+  | Day | 08:00-17:00 *and 19:00-23:00* | 0.3283 | **0.3578** |
+  | Peak | 17:00-19:00 | 0.4234 | **0.4615** |
+
+  Daily fixed charge **1.1120** = standing (0.9731 → 1.0607) + PSO levy
+  (1.46/month → 0.0513/day). Together roughly **40% of the bill**.
+
+  The supplier on the bill is Flogas, not Bord Gáis. The band *windows* above
+  are inherited from the original notes and have not been confirmed against the
+  supplier's tariff document — the rates have.
 
 ## Key sensors
 ### Live power

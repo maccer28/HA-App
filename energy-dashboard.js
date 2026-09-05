@@ -494,7 +494,7 @@ export function alignSeries(seriesByKey) {
 // because a ratio without a reference point is just a number.
 const PERFORMANCE = [
   ['Round trip', 'sensor.battery_round_trip_efficiency', 1, '%', 'energy out vs in, lifetime'],
-  ['Effective rate', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'all-in, vs €0.3233 day rate'],
+  ['Effective rate', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'all-in, vs €0.3578 day rate'],
   ['Self sufficiency', 'sensor.self_sufficiency_today', 1, '%', 'load met without importing'],
   ['Peak import', 'sensor.peak_import_share_today', 1, '%', 'share bought at the worst rate'],
   ['Standing charge', 'sensor.standing_charge_share_today', 1, '%', 'of today\u2019s bill, unavoidable'],

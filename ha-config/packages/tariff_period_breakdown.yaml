@@ -1,5 +1,23 @@
 # ha-config/packages/tariff_period_breakdown.yaml
 #
+# RATES: taken from the 29/07/2026-28/08/2026 bill and stated INCLUSIVE OF 9%
+# VAT, because that is what the money actually costs. The bill lists rates
+# ex-VAT and adds VAT at the end, so each figure here is the billed rate x 1.09:
+#
+#   EV / Night Boost  0.1030 -> 0.1123
+#   Night             0.2549 -> 0.2778
+#   Day               0.3283 -> 0.3578
+#   Peak              0.4234 -> 0.4615
+#
+# The daily fixed charge of 1.1120 is the standing charge (0.9731 -> 1.0607)
+# plus the PSO levy (1.46/month -> 0.0513/day). Both are unavoidable, and
+# together they are about 40% of the bill, which is why the dashboard surfaces
+# standing charge share rather than hiding it inside the cost.
+#
+# Rates rose on 20/07/2026. If they change again, they must be updated in every
+# template below -- they are deliberately literal rather than indirected through
+# helpers, but that means a change touches many lines. Search for the old value.
+#
 # Tariff-period financial breakdown. See:
 # docs/superpowers/specs/2026-09-04-tariff-period-financial-breakdown-design.md
 # in the HA-App repo for the full design.
@@ -180,7 +198,7 @@ template:
         # (charging) and positive during Day/Peak (discharging) -- the two
         # sides are the arbitrage spread, and they net out across the day.
         state: >
-          {% set rate = 0.0824 %}
+          {% set rate = 0.1123 %}
           {% set charged = states('sensor.battery_charge_daily_night_boost') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night_boost') | float(0) %}
           {% set solar = states('sensor.solar_daily_night_boost') | float(0) %}
@@ -200,7 +218,7 @@ template:
         # (charging) and positive during Day/Peak (discharging) -- the two
         # sides are the arbitrage spread, and they net out across the day.
         state: >
-          {% set rate = 0.2438 %}
+          {% set rate = 0.2778 %}
           {% set charged = states('sensor.battery_charge_daily_night') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night') | float(0) %}
           {% set solar = states('sensor.solar_daily_night') | float(0) %}
@@ -220,7 +238,7 @@ template:
         # (charging) and positive during Day/Peak (discharging) -- the two
         # sides are the arbitrage spread, and they net out across the day.
         state: >
-          {% set rate = 0.3233 %}
+          {% set rate = 0.3578 %}
           {% set charged = states('sensor.battery_charge_daily_day') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_day') | float(0) %}
           {% set solar = states('sensor.solar_daily_day') | float(0) %}
@@ -240,7 +258,7 @@ template:
         # (charging) and positive during Day/Peak (discharging) -- the two
         # sides are the arbitrage spread, and they net out across the day.
         state: >
-          {% set rate = 0.4508 %}
+          {% set rate = 0.4615 %}
           {% set charged = states('sensor.battery_charge_daily_peak') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_peak') | float(0) %}
           {% set solar = states('sensor.solar_daily_peak') | float(0) %}
@@ -253,7 +271,7 @@ template:
         state_class: measurement
         icon: mdi:trending-up
         state: >
-          {% set rate = 0.0824 %}
+          {% set rate = 0.1123 %}
           {% set charged = states('sensor.battery_charge_daily_night_boost') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night_boost') | float(0) %}
           {{ ((discharged * rate) - (charged * rate)) | round(2) }}
@@ -264,7 +282,7 @@ template:
         state_class: measurement
         icon: mdi:trending-up
         state: >
-          {% set rate = 0.2438 %}
+          {% set rate = 0.2778 %}
           {% set charged = states('sensor.battery_charge_daily_night') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_night') | float(0) %}
           {{ ((discharged * rate) - (charged * rate)) | round(2) }}
@@ -275,7 +293,7 @@ template:
         state_class: measurement
         icon: mdi:trending-up
         state: >
-          {% set rate = 0.3233 %}
+          {% set rate = 0.3578 %}
           {% set charged = states('sensor.battery_charge_daily_day') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_day') | float(0) %}
           {{ ((discharged * rate) - (charged * rate)) | round(2) }}
@@ -286,7 +304,7 @@ template:
         state_class: measurement
         icon: mdi:trending-up
         state: >
-          {% set rate = 0.4508 %}
+          {% set rate = 0.4615 %}
           {% set charged = states('sensor.battery_charge_daily_peak') | float(0) %}
           {% set discharged = states('sensor.battery_discharge_daily_peak') | float(0) %}
           {{ ((discharged * rate) - (charged * rate)) | round(2) }}
@@ -364,11 +382,11 @@ template:
         state_class: measurement
         icon: mdi:currency-eur
         state: >
-          {% set standing = 0.9164 %}
-          {% set nb = states('sensor.grid_import_daily_night_boost') | float(0) * 0.0824 %}
-          {% set n  = states('sensor.grid_import_daily_night') | float(0) * 0.2438 %}
-          {% set d  = states('sensor.grid_import_daily_day') | float(0) * 0.3233 %}
-          {% set p  = states('sensor.grid_import_daily_peak') | float(0) * 0.4508 %}
+          {% set standing = 1.1120 %}
+          {% set nb = states('sensor.grid_import_daily_night_boost') | float(0) * 0.1123 %}
+          {% set n  = states('sensor.grid_import_daily_night') | float(0) * 0.2778 %}
+          {% set d  = states('sensor.grid_import_daily_day') | float(0) * 0.3578 %}
+          {% set p  = states('sensor.grid_import_daily_peak') | float(0) * 0.4615 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       - name: "Energy Cost Without Battery Today"
@@ -377,11 +395,11 @@ template:
         state_class: measurement
         icon: mdi:currency-eur
         state: >
-          {% set standing = 0.9164 %}
-          {% set nb = (states('sensor.grid_import_daily_night_boost') | float(0) - states('sensor.battery_charge_daily_night_boost') | float(0) + states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.0824 %}
-          {% set n  = (states('sensor.grid_import_daily_night') | float(0) - states('sensor.battery_charge_daily_night') | float(0) + states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2438 %}
-          {% set d  = (states('sensor.grid_import_daily_day') | float(0) - states('sensor.battery_charge_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
-          {% set p  = (states('sensor.grid_import_daily_peak') | float(0) - states('sensor.battery_charge_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
+          {% set standing = 1.1120 %}
+          {% set nb = (states('sensor.grid_import_daily_night_boost') | float(0) - states('sensor.battery_charge_daily_night_boost') | float(0) + states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.1123 %}
+          {% set n  = (states('sensor.grid_import_daily_night') | float(0) - states('sensor.battery_charge_daily_night') | float(0) + states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2778 %}
+          {% set d  = (states('sensor.grid_import_daily_day') | float(0) - states('sensor.battery_charge_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3578 %}
+          {% set p  = (states('sensor.grid_import_daily_peak') | float(0) - states('sensor.battery_charge_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4615 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       # ─── TODAY AGGREGATES (per-period, replacing flat-rate guesses) ──
@@ -394,10 +412,10 @@ template:
         state_class: measurement
         icon: mdi:battery-charging
         state: >
-          {% set nb = states('sensor.battery_charge_daily_night_boost') | float(0) * 0.0824 %}
-          {% set n  = states('sensor.battery_charge_daily_night') | float(0) * 0.2438 %}
-          {% set d  = states('sensor.battery_charge_daily_day') | float(0) * 0.3233 %}
-          {% set p  = states('sensor.battery_charge_daily_peak') | float(0) * 0.4508 %}
+          {% set nb = states('sensor.battery_charge_daily_night_boost') | float(0) * 0.1123 %}
+          {% set n  = states('sensor.battery_charge_daily_night') | float(0) * 0.2778 %}
+          {% set d  = states('sensor.battery_charge_daily_day') | float(0) * 0.3578 %}
+          {% set p  = states('sensor.battery_charge_daily_peak') | float(0) * 0.4615 %}
           {{ (nb + n + d + p) | round(2) }}
 
       - name: "Arbitrage Profit Today"
@@ -476,11 +494,11 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set standing = 0.9164 %}
-          {% set nb = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
-          {% set n  = state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) * 0.2438 %}
-          {% set d  = state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) * 0.3233 %}
-          {% set p  = state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) * 0.4508 %}
+          {% set standing = 1.1120 %}
+          {% set nb = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) * 0.1123 %}
+          {% set n  = state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) * 0.2778 %}
+          {% set d  = state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) * 0.3578 %}
+          {% set p  = state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) * 0.4615 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       - name: "Energy Cost Without Battery Yesterday"
@@ -501,11 +519,11 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set standing = 0.9164 %}
-          {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
-          {% set n  = (state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
-          {% set d  = (state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
-          {% set p  = (state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {% set standing = 1.1120 %}
+          {% set nb = (state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.1123 %}
+          {% set n  = (state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2778 %}
+          {% set d  = (state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3578 %}
+          {% set p  = (state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4615 %}
           {{ (nb + n + d + p + standing) | round(2) }}
 
       - name: "Arbitrage Profit Yesterday"
@@ -526,10 +544,10 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
-          {% set n  = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0)) * 0.2438 %}
-          {% set d  = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0)) * 0.3233 %}
-          {% set p  = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0)) * 0.1123 %}
+          {% set n  = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0)) * 0.2778 %}
+          {% set d  = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0)) * 0.3578 %}
+          {% set p  = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) - state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0)) * 0.4615 %}
           {{ (nb + n + d + p) | round(2) }}
 
       - name: "Battery Charge Cost Yesterday"
@@ -550,10 +568,10 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set nb = state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) * 0.0824 %}
-          {% set n  = state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) * 0.2438 %}
-          {% set d  = state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) * 0.3233 %}
-          {% set p  = state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) * 0.4508 %}
+          {% set nb = state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) * 0.1123 %}
+          {% set n  = state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) * 0.2778 %}
+          {% set d  = state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) * 0.3578 %}
+          {% set p  = state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) * 0.4615 %}
           {{ (nb + n + d + p) | round(2) }}
 
       - name: "Solar Yesterday kWh"
@@ -597,7 +615,7 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {{ (states('sensor.solar_yesterday_kwh') | float(0) * 0.3233) | round(2) }}
+          {{ (states('sensor.solar_yesterday_kwh') | float(0) * 0.3578) | round(2) }}
 
       # Cross-check on the meters. The inverter reports its own yesterday
       # totals (sensor.solis_s6_eh1p_yesterday_*), which are authoritative but
@@ -666,10 +684,10 @@ template:
         state_class: measurement
         icon: mdi:cash-remove
         state: >
-          {% set nb = (states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.0824 %}
-          {% set ni = (states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2438 %}
-          {% set da = (states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
-          {% set pe = (states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
+          {% set nb = (states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.solar_daily_night_boost') | float(0)) * 0.1123 %}
+          {% set ni = (states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.solar_daily_night') | float(0)) * 0.2778 %}
+          {% set da = (states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3578 %}
+          {% set pe = (states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4615 %}
           {{ (nb + ni + da + pe) | round(2) }}
 
       - name: "Energy Avoided Cost Yesterday"
@@ -690,10 +708,10 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.0824 %}
-          {% set ni = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2438 %}
-          {% set da = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3233 %}
-          {% set pe = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4508 %}
+          {% set nb = (state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0)) * 0.1123 %}
+          {% set ni = (state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0)) * 0.2778 %}
+          {% set da = (state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0)) * 0.3578 %}
+          {% set pe = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * 0.4615 %}
           {{ (nb + ni + da + pe) | round(2) }}
 
       # ─── PERFORMANCE ────────────────────────────────────────────
@@ -726,7 +744,7 @@ template:
 
       # All-in: includes the standing charge, so this is what a kWh actually
       # costs once the daily fee is spread over what was used. Compare against
-      # the 0.3233 day rate to see whether the battery is beating the tariff.
+      # the 0.3578 day rate to see whether the battery is beating the tariff.
       - name: "Effective Unit Rate Today"
         unique_id: effective_unit_rate_today
         unit_of_measurement: "EUR/kWh"
@@ -770,7 +788,7 @@ template:
           {{ ((states('sensor.grid_import_daily_peak') | float(0) / total) * 100) | round(1) }}
 
       # How much of the bill is the fixed daily fee -- the part no amount of
-      # optimisation can touch. At EUR 0.9164/day it is roughly EUR 334 a year.
+      # optimisation can touch. At EUR 1.1120/day it is roughly EUR 334 a year.
       - name: "Standing Charge Share Today"
         unique_id: standing_charge_share_today
         unit_of_measurement: "%"
@@ -778,7 +796,7 @@ template:
         icon: mdi:calendar-clock
         availability: "{{ states('sensor.energy_cost_today') | float(0) > 0 }}"
         state: >
-          {{ ((0.9164 / states('sensor.energy_cost_today') | float(1)) * 100) | round(1) }}
+          {{ ((1.1120 / states('sensor.energy_cost_today') | float(1)) * 100) | round(1) }}
 
       - name: "Battery Equivalent Full Cycles"
         unique_id: battery_equivalent_full_cycles
@@ -835,7 +853,7 @@ template:
             {% endfor %}
             {{ ns.out }}
           rates: >
-            {{ {'night_boost': 0.0824, 'night': 0.2438, 'day': 0.3233, 'peak': 0.4508} }}
+            {{ {'night_boost': 0.1123, 'night': 0.2778, 'day': 0.3578, 'peak': 0.4615} }}
 
       # Replaces the hour-based template of the same unique_id in the host's
       # configuration.yaml — that block must be deleted there, see README.
@@ -849,7 +867,7 @@ template:
         availability: >
           {{ states('sensor.current_tariff_period') in ['night_boost', 'night', 'day', 'peak'] }}
         state: >
-          {% set rates = {'night_boost': 0.0824, 'night': 0.2438, 'day': 0.3233, 'peak': 0.4508} %}
+          {% set rates = {'night_boost': 0.1123, 'night': 0.2778, 'day': 0.3578, 'peak': 0.4615} %}
           {{ rates[states('sensor.current_tariff_period')] }}
 
       # ─── SOLAR TODAY (UNAMBIGUOUS kWh) ──────────────────────────
@@ -881,7 +899,7 @@ template:
         state_class: measurement
         icon: mdi:solar-power
         state: >
-          {{ (states('sensor.solar_today_kwh') | float(0) * 0.3233) | round(2) }}
+          {{ (states('sensor.solar_today_kwh') | float(0) * 0.3578) | round(2) }}
 
 automation:
   - alias: "Tariff Period Sync"
