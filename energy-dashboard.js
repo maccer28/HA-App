@@ -10,11 +10,6 @@ export const TABS = [
   { key: 'financial', label: 'Financial' },
 ];
 
-// The sign convention on sensor.solis_s6_eh1p_battery_power is flagged as
-// unverified in CLAUDE.md. It is isolated here so that correcting it against
-// the real inverter is a one-line change rather than a hunt through builders.
-const BATTERY_POSITIVE_IS_CHARGE = true;
-
 const DASH = '—';
 
 const COLORS = {
@@ -107,15 +102,34 @@ export function renderRowsHTML(rows) {
 export function buildPowerFlow(states) {
   const solar = numOrNull(states, 'sensor.solar_power');
   const grid = numOrNull(states, 'sensor.solis_s6_eh1p_grid_power_net');
-  const battery = numOrNull(states, 'sensor.solis_s6_eh1p_battery_power');
   const home = numOrNull(states, 'sensor.solis_s6_eh1p_household_load_power');
 
   const gridDirection = grid === null ? null : grid >= 0 ? 'Import' : 'Export';
 
+  // The inverter exposes charge and discharge as two separate one-sided power
+  // sensors, each 0 when the other is active. Reading those removes the sign
+  // question on battery_power entirely — which matters, because that sign is
+  // the opposite of the intuitive one: verified live on 2026-09-05,
+  // battery_power read +127 W while discharge_power was 127, charge_power 0,
+  // and SOC fell 60% -> 59%. Positive is DISCHARGE.
+  const charge = numOrNull(states, 'sensor.solis_s6_eh1p_battery_charge_power');
+  const discharge = numOrNull(states, 'sensor.solis_s6_eh1p_battery_discharge_power');
+
+  let battery = null;
   let batteryDirection = null;
-  if (battery !== null) {
-    const charging = BATTERY_POSITIVE_IS_CHARGE ? battery > 0 : battery < 0;
-    batteryDirection = battery === 0 ? 'Idle' : charging ? 'Charging' : 'Discharging';
+  if (charge !== null || discharge !== null) {
+    const c = charge ?? 0;
+    const dis = discharge ?? 0;
+    if (c > 0) {
+      battery = c;
+      batteryDirection = 'Charging';
+    } else if (dis > 0) {
+      battery = dis;
+      batteryDirection = 'Discharging';
+    } else {
+      battery = 0;
+      batteryDirection = 'Idle';
+    }
   }
 
   const directional = (value, direction) =>

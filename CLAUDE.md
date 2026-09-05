@@ -20,8 +20,12 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 ### Live power
 - sensor.solar_power — solar AC output watts
 - sensor.solis_s6_eh1p_grid_power_net — grid W (positive=import, negative=export)
-- sensor.solis_s6_eh1p_battery_power — battery W
-- sensor.solis_s6_eh1p_battery_power_net — battery W net
+- sensor.solis_s6_eh1p_battery_charge_power — W, 0 unless charging  ← prefer this
+- sensor.solis_s6_eh1p_battery_discharge_power — W, 0 unless discharging  ← prefer this
+- sensor.solis_s6_eh1p_battery_power — battery W (positive = DISCHARGING, see Notes)
+- sensor.solis_s6_eh1p_battery_power_net — battery W net (same convention)
+- sensor.solis_s6_eh1p_battery_soh — battery health %
+- sensor.solis_s6_eh1p_battery_voltage_bms / _current_bms — BMS-reported pair
 - sensor.solis_s6_eh1p_household_load_power — house load W
 - sensor.solis_s6_eh1p_battery_soc — battery % (0-100)
 - sensor.solis_s6_eh1p_battery_voltage — battery V
@@ -292,12 +296,15 @@ yesterday figures.
   boundary math, no unit conversion, no rate tables in JS — anything that could
   drift gets a template sensor in the package instead. The panel's JS is
   restricted to number→string formatting.
-- solar_today's unit is unverified (long assumed Wh) — don't use it; use
-  sensor.solar_today_kwh. See README.md's "Outstanding" section.
-- battery_power sign: unverified. The panel isolates it in the single constant
-  `BATTERY_POSITIVE_IS_CHARGE` in energy-dashboard.js — flip that one line if
-  charge/discharge reads backwards.
-- battery_power_net sign: check carefully, may need inversion depending on charge/discharge direction
+- solar_today is in Wh (verified live) — don't use it; use
+  sensor.solar_today_kwh / sensor.solar_yesterday_kwh.
+- **battery_power / battery_power_net: positive = DISCHARGING**, the opposite of
+  the intuitive reading. Verified live 2026-09-05: battery_power was +127 W
+  while battery_discharge_power was 127, battery_charge_power 0, and SOC fell
+  60% → 59%. `sensor.solis_s6_eh1p_battery_current_direction` was 1.
+  **Prefer the two one-sided sensors** — `sensor.solis_s6_eh1p_battery_charge_power`
+  and `sensor.solis_s6_eh1p_battery_discharge_power`, each 0 when the other is
+  active — so no sign convention has to be remembered at all. The panel does this.
 - grid_power_net: positive = importing, negative = exporting
 - Total saving sensors backed by input_number helpers that accumulate via midnight automation
 - Install date: 2026-07-13

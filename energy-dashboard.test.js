@@ -105,7 +105,8 @@ const DASH = '—';
 const liveStates = {
   'sensor.solar_power': { state: '2450.4' },
   'sensor.solis_s6_eh1p_grid_power_net': { state: '-1200' },
-  'sensor.solis_s6_eh1p_battery_power': { state: '800' },
+  'sensor.solis_s6_eh1p_battery_charge_power': { state: '800' },
+  'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
   'sensor.solis_s6_eh1p_household_load_power': { state: '450' },
 
   'sensor.current_tariff_period': { state: 'day' },
@@ -185,14 +186,36 @@ test('buildPowerFlow reports grid import for a positive net and export for a neg
   assert.equal(exporting[1].text, '1.20 kW Export');
 });
 
-test('buildPowerFlow reports battery discharging on the opposite sign and idle at zero', () => {
-  const discharging = buildPowerFlow({ 'sensor.solis_s6_eh1p_battery_power': { state: '-800' } });
+test('buildPowerFlow reads battery direction from the dedicated charge/discharge sensors', () => {
+  // Verified live 2026-09-05: battery_discharge_power 127 / charge_power 0 while
+  // SOC fell 60 -> 59, so these two sensors are authoritative and the sign of
+  // battery_power is NOT charge-positive.
+  const discharging = buildPowerFlow({
+    'sensor.solis_s6_eh1p_battery_charge_power': { state: '0' },
+    'sensor.solis_s6_eh1p_battery_discharge_power': { state: '127' },
+  });
   assert.equal(discharging[2].direction, 'Discharging');
-  assert.equal(discharging[2].text, '800 W Discharging');
+  assert.equal(discharging[2].text, '127 W Discharging');
 
-  const idle = buildPowerFlow({ 'sensor.solis_s6_eh1p_battery_power': { state: '0' } });
+  const charging = buildPowerFlow({
+    'sensor.solis_s6_eh1p_battery_charge_power': { state: '800' },
+    'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
+  });
+  assert.equal(charging[2].direction, 'Charging');
+  assert.equal(charging[2].text, '800 W Charging');
+
+  const idle = buildPowerFlow({
+    'sensor.solis_s6_eh1p_battery_charge_power': { state: '0' },
+    'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
+  });
   assert.equal(idle[2].direction, 'Idle');
   assert.equal(idle[2].text, '0 W Idle');
+});
+
+test('buildPowerFlow dashes the battery when neither charge nor discharge is reported', () => {
+  const nodes = buildPowerFlow({});
+  assert.equal(nodes[2].text, '—');
+  assert.equal(nodes[2].direction, null);
 });
 
 test('buildPowerFlow dashes every node when no states are present', () => {
