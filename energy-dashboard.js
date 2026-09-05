@@ -591,9 +591,12 @@ export function renderLiveHTML(states, now = new Date()) {
   `;
 }
 
-function tableHTML(head, rows) {
+// numFrom: index of the first numeric column. Everything from there right-aligns
+// with the figures beneath it; label columns stay left. The money chain has two
+// label columns (the operator and the metric), so it passes 2.
+function tableHTML(head, rows, numFrom = 1) {
   return `<div class="scroll"><table>
-    <thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ''}>${h}</th>`).join('')}</tr></thead>
+    <thead><tr>${head.map((h, i) => `<th${i >= numFrom ? ' class="num"' : ''}>${h}</th>`).join('')}</tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }
@@ -651,7 +654,7 @@ export function renderFinancialHTML(states) {
   return `
     <section class="card">
       <h3>How the saving is made</h3>
-      ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain)}
+      ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
       <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it. Take off what you paid to charge, and what is left is the saving.</p>
     </section>
     <section class="card">
@@ -738,8 +741,12 @@ if (typeof HTMLElement !== 'undefined') {
 
           /* The signature: the day as proportional price bands. */
           .ribbon { position: relative; display: flex; height: 14px; border-radius: 7px; overflow: hidden; }
-          .ribbon .seg { display: block; height: 100%; opacity: 0.42; transition: opacity 0.3s ease; }
-          .ribbon .seg.on { opacity: 1; }
+          .ribbon .seg {
+            display: block; height: 100%;
+            filter: saturate(0.5) brightness(0.62);
+            transition: filter 0.3s ease;
+          }
+          .ribbon .seg.on { filter: none; }
           .ribbon .now {
             position: absolute; top: -3px; width: 2px; height: 20px; margin-left: -1px;
             background: #e6ebf2; border-radius: 1px; box-shadow: 0 0 6px rgba(230,235,242,0.9);

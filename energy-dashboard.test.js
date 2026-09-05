@@ -569,3 +569,15 @@ test('the power-flow direction renders as its own element, not appended to the v
   // and the figure itself must not carry the word
   assert.doesNotMatch(html, /357 W Discharging/);
 });
+
+test('only the figure columns right-align; label columns stay left', () => {
+  const fin = renderFinancialHTML({});
+  // the money chain has two label columns (operator, metric) before the figures
+  const head = fin.slice(fin.indexOf('<thead>'), fin.indexOf('</thead>'));
+  assert.doesNotMatch(head, /<th class="num">Metric<\/th>/, 'Metric is a label, not a figure');
+  assert.match(head, /<th class="num">Today<\/th>/);
+
+  // the detail table's first column is its only label column
+  const detailHead = fin.slice(fin.indexOf('Detail'));
+  assert.match(detailHead, /<th>Metric<\/th>/);
+});
