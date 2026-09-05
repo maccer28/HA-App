@@ -56,6 +56,7 @@ utility_meter:
 input_number:
   total_saving_night_boost:
     name: "Total Saving - Night Boost"
+    initial: 0
     min: 0
     max: 100000
     step: 0.01
@@ -63,6 +64,7 @@ input_number:
     mode: box
   total_saving_night:
     name: "Total Saving - Night"
+    initial: 0
     min: 0
     max: 100000
     step: 0.01
@@ -70,6 +72,7 @@ input_number:
     mode: box
   total_saving_day:
     name: "Total Saving - Day"
+    initial: 0
     min: 0
     max: 100000
     step: 0.01
@@ -77,6 +80,7 @@ input_number:
     mode: box
   total_saving_peak:
     name: "Total Saving - Peak"
+    initial: 0
     min: 0
     max: 100000
     step: 0.01
@@ -84,6 +88,7 @@ input_number:
     mode: box
   total_arbitrage_night_boost:
     name: "Total Arbitrage - Night Boost"
+    initial: 0
     min: -100000
     max: 100000
     step: 0.01
@@ -91,6 +96,7 @@ input_number:
     mode: box
   total_arbitrage_night:
     name: "Total Arbitrage - Night"
+    initial: 0
     min: -100000
     max: 100000
     step: 0.01
@@ -98,6 +104,7 @@ input_number:
     mode: box
   total_arbitrage_day:
     name: "Total Arbitrage - Day"
+    initial: 0
     min: -100000
     max: 100000
     step: 0.01
@@ -105,6 +112,7 @@ input_number:
     mode: box
   total_arbitrage_peak:
     name: "Total Arbitrage - Peak"
+    initial: 0
     min: -100000
     max: 100000
     step: 0.01
