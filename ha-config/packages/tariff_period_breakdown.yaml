@@ -844,4 +844,4 @@ panel_custom:
     # file while the same path with a query returned the correct 26027-byte one.
     #
     # BUMP THIS ON EVERY RELEASE, to match the version installed via HACS.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.2.2
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.2.3

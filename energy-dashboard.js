@@ -337,13 +337,21 @@ export function formatDayLabel(day) {
 // what was paid to charge the battery. battery_charge_cost_today has statistics
 // covering the same period, so the whole series can be put on a net basis
 // rather than left with an artificial cliff on the changeover date.
+// The changeover day itself is dropped. Its statistic is the maximum the
+// sensor reached that day, which spans both models AND the meter reset that
+// came with the restart — measured on 2026-09-05, the stored max was 3.19
+// while the sensor's actual corrected value for the day was 0.48. That day
+// cannot be reconstructed from either model, so plotting it at all would show
+// a figure that is simply wrong, permanently, every time the chart is drawn.
 export function correctedNetSaving(savingRows, chargeRows, cutoffDay = MODEL_CHANGE_DATE) {
   const charge = new Map(dailyMaxima(chargeRows).map(p => [p.day, p.value]));
-  return dailyMaxima(savingRows).map(({ day, value }) => ({
-    day,
-    value: day < cutoffDay ? Number((value - (charge.get(day) ?? 0)).toFixed(2)) : value,
-    corrected: day < cutoffDay,
-  }));
+  return dailyMaxima(savingRows)
+    .filter(({ day }) => day !== cutoffDay)
+    .map(({ day, value }) => ({
+      day,
+      value: day < cutoffDay ? Number((value - (charge.get(day) ?? 0)).toFixed(2)) : value,
+      corrected: day < cutoffDay,
+    }));
 }
 
 // utility_meter statistics carry a monotonically rising `sum` that continues
@@ -502,7 +510,7 @@ export function renderHistoryHTML(states) {
     <section class="card">
       <h3>Net saving per day &mdash; last 30 days</h3>
       <div class="chart"><canvas id="chart-saving"></canvas></div>
-      <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, without subtracting what was paid to charge the battery. They are corrected here by subtracting that day&rsquo;s recorded charge cost, so the whole series is on the same net basis &mdash; the stored history itself is unchanged.</p>
+      <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, without subtracting what was paid to charge the battery. They are corrected here by subtracting that day&rsquo;s recorded charge cost, so the whole series is on the same net basis &mdash; the stored history itself is unchanged. ${MODEL_CHANGE_DATE} itself is omitted: its recorded figure spans both models and the meter reset, so it cannot be reconstructed.</p>
     </section>
     <p class="note" id="history-note">Loading statistics&hellip;</p>
   `;

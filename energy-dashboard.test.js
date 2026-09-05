@@ -458,8 +458,21 @@ test('correctedNetSaving puts pre-change days on a net basis', () => {
   // gross figures before the cutoff get the charge cost taken off
   assert.deepEqual(out[0], { day: '2026-09-03', value: 4.78, corrected: true });
   assert.deepEqual(out[1], { day: '2026-09-04', value: 2.59, corrected: true });
-  // the cutoff day onward is already net and must be left alone
-  assert.deepEqual(out[2], { day: '2026-09-05', value: 2.41, corrected: false });
+  // the changeover day spans both models plus a meter reset -> unreconstructable
+  assert.equal(out.length, 2, 'the changeover day must be omitted, not plotted');
+  assert.ok(!out.some(p => p.day === '2026-09-05'));
+});
+
+test('correctedNetSaving keeps days after the changeover untouched', () => {
+  const out = correctedNetSaving(
+    [{ start: '2026-09-06T00:00:00', max: 2.2 }, { start: '2026-09-07T00:00:00', max: 2.6 }],
+    [{ start: '2026-09-06T00:00:00', max: 1.0 }],
+    '2026-09-05'
+  );
+  assert.deepEqual(out, [
+    { day: '2026-09-06', value: 2.2, corrected: false },
+    { day: '2026-09-07', value: 2.6, corrected: false },
+  ]);
 });
 
 test('correctedNetSaving leaves a day alone when no charge cost was recorded', () => {
