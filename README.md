@@ -10,43 +10,62 @@ a native web component. See `CLAUDE.md` for full technical details.
 2. Add this repository's URL, category **Plugin**.
 3. Find "Energy Dashboard" in HACS and install it.
 4. **Before** copying the package file (next step), edit your HA host's
-   `configuration.yaml` and delete:
-   - the existing template sensor blocks with `unique_id: energy_cost_today`
-     and `unique_id: energy_cost_without_battery_today` — the package below
-     defines accurate replacements with the same `unique_id`s, and HA
-     packages *merge* with the main config rather than overriding it, so
-     leaving the old blocks in place means the new accurate sensors get
-     skipped (or create duplicate `_2` entities) and the old inaccurate
-     heuristic keeps being used everywhere downstream.
-   - the existing template sensor blocks named `Electricity Rate`
-     (`unique_id: electricity_rate_yaml`) and `Solar Value Today`
-     (`unique_id: solar_value_today`) — same merge problem. The package's
-     `Electricity Rate` is a lookup keyed off `sensor.current_tariff_period`
-     instead of a third copy of the hour boundaries, and its
-     `Solar Value Today` reads the unambiguous `sensor.solar_today_kwh`
-     rather than dividing `sensor.solar_today` by 1000.
-   - the template sensor block named `Grid Import Rate Breakdown` — it is an
-     exact duplicate of the package's `sensor.current_tariff_period` and
-     nothing references it.
-   - the four yesterday blocks `Energy Cost Yesterday`,
-     `Energy Cost Without Battery Yesterday`, `Arbitrage Profit Yesterday`
-     and `Battery Charge Cost Yesterday`, plus `Solar Value Yesterday` —
-     same merge problem. These guessed yesterday's tariff split from a single
-     daily total (`min(imported, 3.0)` as night boost, 10% of the remainder
-     as peak, all battery charging at the night boost rate). The package
-     computes them from each utility meter's `last_period` attribute, which
-     holds the actual per-tariff totals for the previous cycle, so yesterday
-     is now as accurate as today.
+   `configuration.yaml`. HA packages *merge* with the main config rather than
+   overriding it, so a block left in place with the same `unique_id` means the
+   package's accurate sensor is skipped (or lands as a duplicate `_2` entity)
+   and the old one keeps being used everywhere downstream.
 
-     **Keep** `Energy Saving Yesterday` — it derives purely from the two cost
-     sensors above and needs no change.
-   - the existing `panel_custom` block for `url_path: energy-dashboard` /
-     `module_url: /local/energy-dashboard/energy-dashboard.js` — the
-     package registers its own `panel_custom` entry at the same
-     `url_path`, HA raises an error on a duplicate `frontend_url_path`,
-     and there's a real risk the broken `/local/` entry (see CLAUDE.md's
-     "Lessons learned" section on `NS_ERROR_CORRUPTED_CONTENT`) wins the
-     conflict.
+   **Delete these ten template sensor blocks** — each collides with a package
+   sensor of the same `unique_id`:
+
+   | Block | Why the package's version is better |
+   |---|---|
+   | `Electricity Rate` | lookup keyed off `sensor.current_tariff_period` instead of a third copy of the hour boundaries |
+   | `Solar Value Today` | reads `sensor.solar_today_kwh`; no `/1000` on the Wh-denominated helper |
+   | `Solar Value Yesterday` | read `sensor.solar_today_previous_period`, **which does not exist** — it silently evaluated to €0 |
+   | `Energy Cost Yesterday` | actual per-tariff split instead of `min(imported, 3.0)` as night boost + 10% of the rest as peak |
+   | `Energy Cost Without Battery Yesterday` | same, and its solar term was the non-existent entity above |
+   | `Battery Charge Cost Today` | per-period rates instead of assuming all charging happens at the night boost rate |
+   | `Battery Charge Cost Yesterday` | same |
+   | `Arbitrage Profit Today` | per-period rates instead of charge@night-boost / discharge@day |
+   | `Arbitrage Profit Yesterday` | same |
+   | `Total Energy Saving` | **stops double-counting solar** — see step 4b |
+
+   **Keep** `Energy Saving Today`, `Energy Saving Yesterday`,
+   `Total Arbitrage Profit`, `Average Daily Saving`, `Projected Annual Saving`
+   and `Days Since Install` — they derive from the sensors above and need no
+   change.
+
+   Optional cleanup (redundant, but no `unique_id` collision so they will not
+   break anything): `Grid Import Rate Breakdown` duplicates
+   `sensor.current_tariff_period`, and `Rate Arbitrage Lifetime Saving` prices
+   all lifetime import at an invented flat €0.107/kWh.
+
+   If a `panel_custom` block for `url_path: energy-dashboard` is present,
+   delete that too — the package registers its own entry at the same
+   `url_path` and HA errors on a duplicate `frontend_url_path`.
+
+4b. **Fix the `Add Daily Saving at Midnight` automation.** It adds
+   `sensor.solar_value_yesterday` on top of `sensor.energy_saving_yesterday`
+   when accumulating `input_number.total_energy_savings`. Solar is already
+   inside that saving figure: the accurate
+   `energy_cost_without_battery_yesterday` prices
+   (import + discharge + solar) while `energy_cost_yesterday` prices import
+   alone, so their difference already contains solar's value. Adding it again
+   double-counts it, permanently, into the lifetime total.
+
+   This has been harmless only because `solar_value_yesterday` read €0 from a
+   non-existent entity. Once the package makes it return real numbers, the
+   error starts accumulating. Change the automation's value template to drop
+   the `solar_value` term:
+
+   ```jinja
+   {% set current = states('input_number.total_energy_savings') | float(0) %}
+   {% set yesterdays_saving = states('sensor.energy_saving_yesterday') | float(0) %}
+   {{ (current + yesterdays_saving) | round(2) }}
+   ```
+
+   `Add Daily Arbitrage at Midnight` has no solar term and needs no change.
 5. Copy `ha-config/packages/tariff_period_breakdown.yaml` from this repo
    into your HA config's `packages/` directory (create it if it doesn't
    exist, and add `packages: !include_dir_named packages` under the

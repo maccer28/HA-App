@@ -8,9 +8,28 @@
 #   Add `packages: !include_dir_named packages` under the `homeassistant:`
 #   key in configuration.yaml, then place this file in `config/packages/`.
 
+# Sources are the inverter's `today_*` counters, not its `total_*` ones. The
+# total_* counters are integers stepping in whole kWh, which caused two real
+# problems (both observed live on 2026-09-05):
+#
+#   1. A utility_meter produces nothing until its source changes, so after a
+#      restart these meters sat at `unknown` for hours and
+#      sensor.energy_cost_today collapsed to just the standing charge.
+#   2. Each 1 kWh tick is attributed entirely to whichever tariff was active
+#      when the counter crossed. At the Night Boost/Night boundary the rates
+#      differ 3x, so the split feeding every downstream figure was coarse.
+#
+# The today_* counters are 0.1 kWh and tick ~150x/day, fixing both. They reset
+# daily, which is safe here: utility_meter ignores a negative delta (treating
+# it as a source rollover) and these meters reset on the same midnight, so the
+# two resets align instead of double-counting.
+#
+# solar_daily deliberately keeps a total_* style source — sensor.solar_total_yield
+# already has 2 dp and updates constantly, and the only daily solar alternative
+# is the Wh-denominated sensor.solar_today helper.
 utility_meter:
   grid_import_daily:
-    source: sensor.solis_s6_eh1p_total_energy_imported_from_grid
+    source: sensor.solis_s6_eh1p_today_energy_imported_from_grid
     cycle: daily
     tariffs:
       - night_boost
@@ -19,7 +38,7 @@ utility_meter:
       - peak
 
   battery_charge_daily:
-    source: sensor.solis_s6_eh1p_total_battery_charge_energy
+    source: sensor.solis_s6_eh1p_today_battery_charge_energy
     cycle: daily
     tariffs:
       - night_boost
@@ -28,7 +47,7 @@ utility_meter:
       - peak
 
   battery_discharge_daily:
-    source: sensor.solis_s6_eh1p_total_battery_discharge_energy
+    source: sensor.solis_s6_eh1p_today_battery_discharge_energy
     cycle: daily
     tariffs:
       - night_boost
@@ -334,6 +353,55 @@ template:
           {% set d  = (states('sensor.grid_import_daily_day') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.solar_daily_day') | float(0)) * 0.3233 %}
           {% set p  = (states('sensor.grid_import_daily_peak') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) + states('sensor.solar_daily_peak') | float(0)) * 0.4508 %}
           {{ (nb + n + d + p + standing) | round(2) }}
+
+      # ─── TODAY AGGREGATES (per-period, replacing flat-rate guesses) ──
+      # The host's versions assumed every kWh charged went in at the night
+      # boost rate and every kWh discharged came out at the day rate. Without
+      # these the package would leave today LESS accurate than yesterday.
+      - name: "Battery Charge Cost Today"
+        unique_id: battery_charge_cost_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:battery-charging
+        state: >
+          {% set nb = states('sensor.battery_charge_daily_night_boost') | float(0) * 0.0824 %}
+          {% set n  = states('sensor.battery_charge_daily_night') | float(0) * 0.2438 %}
+          {% set d  = states('sensor.battery_charge_daily_day') | float(0) * 0.3233 %}
+          {% set p  = states('sensor.battery_charge_daily_peak') | float(0) * 0.4508 %}
+          {{ (nb + n + d + p) | round(2) }}
+
+      - name: "Arbitrage Profit Today"
+        unique_id: arbitrage_profit_today
+        unit_of_measurement: "EUR"
+        state_class: measurement
+        icon: mdi:trending-up
+        state: >
+          {{ (states('sensor.arbitrage_today_night_boost') | float(0)
+            + states('sensor.arbitrage_today_night') | float(0)
+            + states('sensor.arbitrage_today_day') | float(0)
+            + states('sensor.arbitrage_today_peak') | float(0)) | round(2) }}
+
+      # Solar is ALREADY inside energy_saving_today: the accurate
+      # energy_cost_without_battery_today prices (import + discharge + solar)
+      # while energy_cost_today prices import alone, so their difference is
+      # (discharge + solar) * rate. The host's version added
+      # sensor.solar_value_today on top of that, counting solar twice. That was
+      # harmless while the old cost sensors excluded solar, but it becomes a
+      # real double-count with the accurate ones — hence this override.
+      #
+      # The host's "Add Daily Saving at Midnight" automation has the SAME bug
+      # (it adds sensor.solar_value_yesterday to input_number.total_energy_savings)
+      # and must be fixed too — see README. It has been harmless only because
+      # solar_value_yesterday read 0 from a non-existent entity; once that
+      # sensor returns real numbers the error starts accumulating permanently.
+      - name: "Total Energy Saving"
+        unique_id: total_energy_saving
+        unit_of_measurement: "EUR"
+        state_class: total_increasing
+        icon: mdi:piggy-bank
+        state: >
+          {{ (states('input_number.total_energy_savings') | float(0)
+            + states('sensor.energy_saving_today') | float(0)) | round(2) }}
 
       # ─── YESTERDAY (from utility_meter `last_period`) ───────────
       # Every utility_meter tariff sensor stores its previous completed cycle
