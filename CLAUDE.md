@@ -330,6 +330,34 @@ fed by the nightly rollup all carry no unit ambiguity. The separate
 "Outstanding: the `sensor.solar_today` unit", which now affects only the
 yesterday figures.
 
+## Bill validation (2026-09-05)
+Four Flogas bills for meter 33080844 were reconciled against the model. This is
+the only ground truth the financial figures have; prefer it over the dashboard's
+own history whenever the two disagree.
+
+| period | Day | Night | Peak | EV | bill | €/day | EV share |
+|---|---|---|---|---|---|---|---|
+| 01/05-28/05 | 232.3 | 56.5 | 36.3 | 25.6 | 136.02 | 4.86 | 7.3% |
+| 29/05-27/06 | 178.4 | 58.6 | 20.0 | 28.3 | 115.43 | 3.85 | 9.9% |
+| 28/06-28/07 | 131.9 | 36.9 | 13.2 | 193.1 | 110.46 | 3.56 | 51.5% |
+| 29/07-28/08 | 25.3 | 6.8 | 2.0 | 346.3 | 85.24 | 2.75 | 91.0% |
+
+Battery commissioned ~13/07/2026. Day-rate units collapsed 232 → 25 kWh/month.
+
+- Feeding a bill's own registers through the package reproduces it to the cent
+  (€85.23 vs €85.24 billed).
+- Pricing that month against what the house would have imported without a
+  battery gives **€2.46/day**; the package's model gives €2.48/day. The model
+  is sound.
+- `input_number.total_energy_savings` was seeded at **138.53** on 2026-09-05
+  from the bills. Two earlier values (257.94, then 183.42) were derived from the
+  dashboard's own statistics and were both too high — the first because saving
+  was computed gross, the second because rescaling assumed all discharge was
+  valued at the day rate.
+- Rates rose on 20/07/2026 (visible as split lines on the 28/06-28/07 bill).
+  Statistics recorded before then used the older rates and are not directly
+  comparable.
+
 ## Notes
 - **Home Assistant owns the data; the panel only renders it.** No tariff-period
   boundary math, no unit conversion, no rate tables in JS — anything that could
