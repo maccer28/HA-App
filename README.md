@@ -45,6 +45,17 @@ a native web component. See `CLAUDE.md` for full technical details.
    delete that too — the package registers its own entry at the same
    `url_path` and HA errors on a duplicate `frontend_url_path`.
 
+4a. **Fix the `Days Since Install` sensor** if it reports `unknown`. In the
+   original `configuration.yaml` a `# ─── RATE PERIOD TRACKING ───` comment sits
+   *indented inside* that sensor's `state: >` block scalar, so YAML folds it
+   into the template output instead of treating it as a comment. The sensor then
+   renders `54 # ─── RATE PERIOD TRACKING ───…`, which is not numeric, and HA
+   logs `ValueError: … indicating it has a numeric value; however, it has the
+   non-numeric value`. Delete the comment line (and the blank line after it).
+
+   The same trap applies anywhere else a comment is indented under a `>` or `|`
+   block — comments are only comments *outside* block scalars.
+
 4b. **Fix the `Add Daily Saving at Midnight` automation.** It adds
    `sensor.solar_value_yesterday` on top of `sensor.energy_saving_yesterday`
    when accumulating `input_number.total_energy_savings`. Solar is already
