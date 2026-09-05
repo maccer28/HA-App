@@ -75,6 +75,14 @@ a native web component. See `CLAUDE.md` for full technical details.
    `energy-dashboard.js` (usually `/hacsfiles/HA-App/energy-dashboard.js`)
    matches the `module_url` in `tariff_period_breakdown.yaml`'s
    `panel_custom` entry — edit and re-copy the package file if it differs.
+
+   **On every upgrade, bump the `?v=` on that `module_url` to the new
+   version.** If the host is behind a CDN (Cloudflare, and this one is —
+   `configuration.yaml`'s `http:` block uses a `origin.pem` Cloudflare Origin
+   Certificate), the bare `.js` URL gets edge-cached and HA will keep loading
+   the *previous* release even after a HACS update, an HA restart and a browser
+   hard-refresh. A browser refresh cannot clear a CDN edge cache. Symptom: HACS
+   reports the new version while the panel still renders the old layout.
 8. Check the HA log for `Duplicate unique_id` — any hit means one of the
    blocks in step 4 was not deleted, and the old inaccurate sensor is still
    the one in use.
