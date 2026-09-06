@@ -234,12 +234,6 @@ const ENERGY_FLOWS = [
     'sensor.solis_s6_eh1p_yesterday_energy_consumption',
     'sensor.solis_s6_eh1p_household_load_total_energy',
   ],
-  [
-    'Backup load',
-    'sensor.solis_s6_eh1p_backup_load_today_energy',
-    null,
-    'sensor.solis_s6_eh1p_backup_load_total_energy',
-  ],
 ];
 
 // Figures are bare; the unit lives in the column header. Repeating "kWh" in
@@ -259,9 +253,10 @@ export function buildEnergyTable(states) {
   }));
 }
 
+// Backup load is omitted throughout: the circuit is not used on this system, so
+// every figure was a row of zeroes. The sensors still exist if it is ever wired.
 const PERIOD_TOTALS = [
   ['Home load', 'sensor.solis_s6_eh1p_household_load_month_energy', 'sensor.solis_s6_eh1p_household_load_year_energy'],
-  ['Backup load', 'sensor.solis_s6_eh1p_backup_load_month_energy', 'sensor.solis_s6_eh1p_backup_load_year_energy'],
 ];
 
 export function buildPeriodTotals(states) {

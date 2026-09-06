@@ -271,12 +271,10 @@ test('buildEnergyTable covers every real energy flow across today/yesterday/life
   const rows = buildEnergyTable(liveStates);
   assert.deepEqual(rows.map(r => r.label), [
     'Solar', 'Grid import', 'Grid export', 'Battery charged',
-    'Battery discharged', 'Home load', 'Backup load',
+    'Battery discharged', 'Home load',
   ]);
   assert.equal(rows[0].today, '8.42', 'figures are bare; the unit is in the column header');
-
-  // Backup load has no yesterday sensor; it must dash, not fabricate a zero
-  assert.equal(rows[6].yesterday, DASH);
+  assert.ok(!rows.some(r => r.label === 'Backup load'), 'the backup circuit is unused on this system');
 
   for (const r of buildEnergyTable({})) {
     assert.equal(r.today, DASH);
@@ -289,8 +287,7 @@ test('buildPeriodTotals exposes month and year figures', () => {
     'sensor.solis_s6_eh1p_household_load_month_energy': { state: '71' },
     'sensor.solis_s6_eh1p_household_load_year_energy': { state: '1198' },
   });
-  assert.deepEqual(rows[0], { label: 'Home load', month: '71.00', year: '1198.00' });
-  assert.equal(rows[1].month, DASH);
+  assert.deepEqual(rows, [{ label: 'Home load', month: '71.00', year: '1198.00' }]);
 });
 
 test('ribbonSegments merges consecutive hours into proportional bands', () => {
