@@ -605,13 +605,15 @@ test('table cells never butt together', () => {
 test('buildPerformance renders each ratio with its own precision and a reading hint', () => {
   const rows = buildPerformance({
     'sensor.battery_round_trip_efficiency': { state: '93.5' },
-    'sensor.effective_unit_rate_today': { state: '0.0817' },
+    'sensor.effective_unit_rate_yesterday': { state: '0.0817' },
     'sensor.payback_years_remaining': { state: '2.95' },
   });
   const by = Object.fromEntries(rows.map(r => [r.label, r.text]));
   assert.equal(by['Round trip'], '93.5 %');
   assert.equal(rows[0].label, 'Saved since install', 'the headline number leads');
   assert.equal(by['Effective rate'], '0.0817 €/kWh');
+  assert.match(rows.find(r => r.label === 'Effective rate').hint, /yesterday/,
+    'the headline rate must say it is a completed day');
   assert.equal(by['Payback'], '2.95 yr');
   assert.ok(rows.every(r => r.hint && r.hint.length), 'every tile explains how to read it');
 

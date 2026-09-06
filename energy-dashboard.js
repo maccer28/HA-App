@@ -502,7 +502,8 @@ const PERFORMANCE = [
     return days === null ? 'net of charging cost' : `over ${days.toFixed(0)} days, net of charging`;
   }],
   ['Round trip', 'sensor.battery_round_trip_efficiency', 1, '%', 'energy out vs in, lifetime'],
-  ['Effective rate', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'all-in, vs €0.3578 day rate'],
+  ['Effective rate', 'sensor.effective_unit_rate_yesterday', 4, '\u20ac/kWh', 'yesterday, all-in, vs €0.3578 day rate'],
+  ['Rate so far today', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'runs high until the battery discharges'],
   ['Self sufficiency', 'sensor.self_sufficiency_today', 1, '%', 'load met without importing'],
   ['Peak import', 'sensor.peak_import_share_today', 1, '%', 'share bought at the worst rate'],
   ['Standing charge', 'sensor.standing_charge_share_today', 1, '%', 'of today\u2019s bill, unavoidable'],
@@ -714,6 +715,7 @@ export function renderFinancialHTML(states) {
     <section class="card">
       <h3>How the saving is made</h3>
       ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
+      <p class="note"><b>Today runs negative until the battery discharges.</b> Charging is paid for at 02:00 and pays back from 08:00, so the day starts in deficit and recovers. Judge performance on yesterday.</p>
       <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it &mdash; so midday solar is valued at the day rate and late-afternoon solar at the peak rate. Take off what you paid to charge, and what is left is the saving.</p>
     </section>
     <section class="card">

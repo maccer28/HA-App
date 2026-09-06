@@ -805,8 +805,14 @@ template:
              / states('sensor.solis_s6_eh1p_today_battery_charge_energy') | float(1)) * 100) | round(1) }}
 
       # All-in: includes the standing charge, so this is what a kWh actually
-      # costs once the daily fee is spread over what was used. Compare against
-      # the 0.3578 day rate to see whether the battery is beating the tariff.
+      # costs once the daily fee is spread over what was used.
+      #
+      # Read the TODAY figure with care. On an arbitrage system the cost lands
+      # hours before the benefit: the battery is paid for at 02:00 and pays back
+      # from 08:00, so this reads high all morning and falls through the day.
+      # Measured 2026-09-06 at 09:00 it was 0.4107 against a completed-day
+      # figure of 0.1200 for the day before. The yesterday sensor below is the
+      # one to judge performance on.
       - name: "Effective Unit Rate Today"
         unique_id: effective_unit_rate_today
         unit_of_measurement: "EUR/kWh"
@@ -816,6 +822,34 @@ template:
         state: >
           {{ (states('sensor.energy_cost_today') | float(0)
              / states('sensor.solis_s6_eh1p_household_load_today_energy') | float(1)) | round(4) }}
+
+      # A completed day, so free of the intraday swing above. This is the
+      # honest answer to "am I beating the tariff": compare it against the day
+      # rate the household would otherwise have paid.
+      - name: "Effective Unit Rate Yesterday"
+        unique_id: effective_unit_rate_yesterday
+        unit_of_measurement: "EUR/kWh"
+        state_class: measurement
+        icon: mdi:tag-text
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {% set load = states('sensor.solis_s6_eh1p_yesterday_energy_consumption') | float(0) %}
+          {% if load > 0 %}
+            {{ (states('sensor.energy_cost_yesterday') | float(0) / load) | round(4) }}
+          {% else %}
+            unknown
+          {% endif %}
 
       # Share of the house's demand met by the battery and solar rather than by
       # importing at the moment of use.
@@ -1175,4 +1209,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.5.2
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.5.3
