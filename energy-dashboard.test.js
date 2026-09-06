@@ -151,6 +151,7 @@ const liveStates = {
   'sensor.solar_value_yesterday': { state: '3.01' },
 
   'sensor.solis_s6_eh1p_battery_soc': { state: '76.5' },
+  'sensor.solis_s6_eh1p_battery_soh': { state: '100' },
   'sensor.solis_s6_eh1p_battery_voltage': { state: '52.8' },
   'sensor.solis_s6_eh1p_battery_current': { state: '15.2' },
   'sensor.solis_s6_eh1p_temperature': { state: '31.4' },
@@ -371,7 +372,8 @@ test('buildFinancialSummary lays out today/yesterday/total per metric', () => {
 test('buildSystemStats formats each reading with its own precision and unit', () => {
   const rows = buildSystemStats(liveStates);
   const byLabel = Object.fromEntries(rows.map(r => [r.label, r.text]));
-  assert.equal(byLabel['Battery SOC'], '76.5 %');
+  assert.equal(byLabel['Battery Health'], '100 %');
+  assert.ok(!('Battery SOC' in byLabel), 'SOC is shown by the bar, not repeated as a reading');
   assert.equal(byLabel['Grid Frequency'], '49.98 Hz');
   assert.equal(byLabel['Inverter Temp'], '31.4 °C');
   assert.equal(byLabel['Status'], 'Generating');
@@ -417,6 +419,7 @@ test('Live carries the headline figures; the ledger stays on Financial', () => {
   assert.match(live, /Round trip/, 'performance ratios belong on Live');
   assert.match(live, /Saved since install/, 'the headline saving belongs on Live');
   assert.match(live, /class="soc-bar"/, 'Live shows battery state of charge');
+  assert.equal((live.match(/Battery Voltage/g) || []).length, 1, 'no duplicated battery readings after the merge');
   assert.match(live, /class="ribbon"/, 'the tariff ribbon is the Live hero');
 
   // The ledger -- the working that produces those headlines -- does not.
@@ -655,11 +658,11 @@ test('Live is one System card holding rate, flow and readings in that order', ()
     ...liveStates,
     'sensor.current_tariff_period': { state: 'day', attributes: { hours: Array(24).fill('day'), rates: { day: 0.3233 } } },
   });
-  assert.deepEqual([...html.matchAll(/<h3>([^<]+)/g)].map(m => m[1]), ['System', 'Performance', 'Battery']);
+  assert.deepEqual([...html.matchAll(/<h3>([^<]+)/g)].map(m => m[1]), ['System', 'Performance']);
 
   // rate, then what is flowing, then the supporting readings -- all one card
   const sys = html.slice(html.indexOf('<h3>System'), html.indexOf('<h3>Performance'));
-  const order = ['class="rate"', 'class="ribbon"', 'grid4 tier', 'pairs sub'].map(t => sys.indexOf(t));
+  const order = ['class="rate"', 'class="ribbon"', 'grid4 tier', 'class="soc tier"', 'pairs sub'].map(t => sys.indexOf(t));
   assert.ok(order.every(i => i > -1), 'every tier is present in the System card');
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'tiers appear in order of prominence');
 });

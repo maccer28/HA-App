@@ -306,10 +306,12 @@ export function buildFinancialSummary(states) {
   }));
 }
 
+// Battery SOC is deliberately absent: the bar above these readings shows it,
+// and repeating it here was the only duplication left after the merge.
 const SYSTEM_STATS = [
-  ['Battery SOC', 'sensor.solis_s6_eh1p_battery_soc', 1, '%'],
   ['Battery Voltage', 'sensor.solis_s6_eh1p_battery_voltage', 1, 'V'],
   ['Battery Current', 'sensor.solis_s6_eh1p_battery_current', 1, 'A'],
+  ['Battery Health', 'sensor.solis_s6_eh1p_battery_soh', 0, '%'],
   ['Inverter Temp', 'sensor.solis_s6_eh1p_temperature', 1, '°C'],
   ['Grid Voltage', 'sensor.solis_s6_eh1p_a_phase_voltage', 1, 'V'],
   ['Grid Frequency', 'sensor.solis_s6_eh1p_grid_frequency', 2, 'Hz'],
@@ -623,20 +625,12 @@ export function renderLiveHTML(states, now = new Date()) {
       <div class="rate"><span class="cur">€</span>${r.rateText}<span class="per">/kWh</span></div>
       ${ribbonHTML(r)}
       <div class="grid4 tier">${nodes}</div>
+      <div class="soc tier"><span class="soc-k">Battery</span><div class="soc-bar"><i style="width:${pct}%"></i></div><b>${batt.socText}</b></div>
       <dl class="pairs sub">${stats.map(x => `<div><dt>${x.label}</dt><dd>${x.text}</dd></div>`).join('')}</dl>
     </section>
     <section class="card">
       <h3>Performance</h3>
       <div class="tiles">${perf}</div>
-    </section>
-    <section class="card">
-      <h3>Battery</h3>
-      <div class="soc"><div class="soc-bar"><i style="width:${pct}%"></i></div><b>${batt.socText}</b></div>
-      <dl class="pairs">
-        <div><dt>Voltage</dt><dd>${batt.voltText}</dd></div>
-        <div><dt>Current</dt><dd>${batt.currText}</dd></div>
-        <div><dt>Health</dt><dd>${batt.sohText}</dd></div>
-      </dl>
     </section>
   `;
 }
@@ -844,7 +838,8 @@ if (typeof HTMLElement !== 'undefined') {
           }
           .tile .h { color: #4d5666; font-size: 10.5px; line-height: 1.35; }
 
-          .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+          .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+          .soc-k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
           .soc-bar { min-width: 0; }
           .soc-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
           .soc-bar i { display: block; height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.6s ease; }
