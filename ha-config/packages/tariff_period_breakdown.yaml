@@ -1414,31 +1414,26 @@ panel_custom:
     # BUMP THIS ON EVERY RELEASE to match the version installed via HACS, and
     # UPDATE HACS FIRST, then copy this file.
     #
-    # Order matters because the CDN caches misses as well as hits. Copying this
-    # file first points HA at a URL that does not exist yet; the 404 is cached,
-    # and the panel then fails to load with "Unable to load custom panel" even
-    # after HACS downloads the file, because that URL is pinned to the miss.
-    # Observed 2026-09-06: ?v=0.9.2 returned 404 while ?cb=<random> returned the
-    # correct 54798-byte file from the same path.
+    # Why this query string exists: this host sits behind Nginx Proxy Manager
+    # (server: openresty) with "Cache Assets" enabled on the proxy host. That
+    # caches static assets keyed on the FULL URL including the query, with a
+    # long expiry -- and it caches 404s as well as hits.
     #
-    # If it happens anyway, bump this to a value that has never been requested.
+    # Two failures traced to it, both of which looked like panel bugs:
+    #   * a stale build served for hours after a HACS update, across restarts
+    #     and browser hard-refreshes, because a refresh cannot clear a proxy
+    #     cache;
+    #   * "Unable to load custom panel" on 2026-09-06, when this file was copied
+    #     before HACS had downloaded the release. HA requested a URL that did
+    #     not exist yet, the 404 was cached, and the panel kept failing after
+    #     the file arrived. ?v=0.9.2 returned 404 while ?cb=<random> returned
+    #     the correct 54798-byte file from the same path.
     #
-    # A CDN in front of this host caches /hacsfiles/*.js keyed on the full URL,
-    # so a novel URL fetches from origin while a previously-seen one is frozen.
-    # Without the query, HACS reports the new version, the correct file sits on
-    # disk, and the panel still renders the old build -- through restarts and
-    # browser hard-refreshes alike, because neither can clear a CDN edge cache.
+    # THE REAL FIX is to turn off "Cache Assets" for this proxy host in Nginx
+    # Proxy Manager (Hosts -> Proxy Hosts -> edit -> Cache Assets off). HA sets
+    # its own cache headers correctly and does not need the proxy to do it.
+    # With that off, this query string can be dropped entirely.
     #
-    # To test whether the CDN is still caching (and whether a bypass rule is
-    # actually matching), compare the bare URL against a random query:
-    #
-    #   curl -s -H "Authorization: Bearer $TOKEN" \
-    #     'https://<host>/hacsfiles/HA-App/energy-dashboard.js' | wc -c
-    #   curl -s -H "Authorization: Bearer $TOKEN" \
-    #     'https://<host>/hacsfiles/HA-App/energy-dashboard.js?cb=1' | wc -c
-    #
-    # Different sizes mean the bare URL is cached and this ?v= is doing real
-    # work. Identical sizes mean the CDN is bypassing correctly and the query
-    # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
-    # behind, with a `cache-control: max-age=28211` TTL counting down.
+    # If a URL does get poisoned, bump this to a value never requested. Entries
+    # also expire on their own within about a day.
     module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.3

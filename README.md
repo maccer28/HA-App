@@ -94,18 +94,19 @@ a native web component. See `CLAUDE.md` for full technical details.
    matches the `module_url` in `tariff_period_breakdown.yaml`'s
    `panel_custom` entry — edit and re-copy the package file if it differs.
 
-   **If your HA host is behind a CDN, exclude `/hacsfiles/` from its cache.**
-   This one is behind Cloudflare (`configuration.yaml`'s `http:` block uses an
-   `origin.pem` Cloudflare Origin Certificate), and without an exclusion the
-   `.js` gets edge-cached: HACS reports the new version while the panel keeps
-   rendering the old one, through restarts and browser hard-refreshes alike — a
-   browser refresh cannot clear a CDN edge cache. Cloudflare → Caching → Cache
-   Rules → URI Path starts with `/hacsfiles/` → Bypass cache.
+   **If a caching reverse proxy sits in front of HA, stop it caching
+   `/hacsfiles/`.** This host runs Nginx Proxy Manager (`server: openresty`)
+   with **Cache Assets** enabled, which caches static files keyed on the full
+   URL including the query string — and caches 404s too. Symptoms: HACS reports
+   the new version while the panel renders the old one, or *"Unable to load
+   custom panel"* for a file that demonstrably exists. Neither a restart nor a
+   browser hard-refresh clears a proxy cache.
 
-   Without such a rule, add `?v=<version>` to `module_url` and bump it on every
-   release instead. That works, but makes each upgrade a two-step job (HACS
-   update *and* re-copy this package), and forgetting the second step fails
-   silently.
+   Fix it at the proxy: **Hosts → Proxy Hosts → edit → Cache Assets off**. HA
+   sets its own cache headers correctly and does not need the proxy to do it.
+
+   Until then, `module_url` carries `?v=<version>`, bumped every release. That
+   works but makes each upgrade a two-step job — and the steps are ordered.
 9. Check the HA log for `Duplicate unique_id` — any hit means one of the
    blocks in step 4 was not deleted, and the old inaccurate sensor is still
    the one in use.
