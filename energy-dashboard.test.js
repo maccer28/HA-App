@@ -29,6 +29,11 @@ import {
   dailyMaxima,
   alignSeries,
   formatDayLabel,
+  formatBucketLabel,
+  RANGES,
+  findRange,
+  renderRangesHTML,
+  MONEY_MAX_DAYS,
   correctedNetSaving,
   TABS,
 } from './energy-dashboard.js';
@@ -662,4 +667,52 @@ test('Live is one System card holding rate, flow and readings in that order', ()
   const order = ['class="rate"', 'class="ribbon"', 'grid4 tier', 'class="soc tier"', 'pairs sub'].map(t => sys.indexOf(t));
   assert.ok(order.every(i => i > -1), 'every tier is present in the System card');
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'tiers appear in order of prominence');
+});
+
+test('each range picks an aggregation that stays readable', () => {
+  // 730 daily bars is unreadable, especially on a phone; keep every range to a
+  // bucket count a person can actually scan.
+  for (const r of RANGES) {
+    const perBucket = { day: 1, week: 7, month: 30 }[r.period];
+    const buckets = r.days / perBucket;
+    assert.ok(buckets >= 10 && buckets <= 60, `${r.key} yields ${Math.round(buckets)} buckets`);
+  }
+  assert.deepEqual(RANGES.map(r => r.period), ['day', 'week', 'week', 'month']);
+});
+
+test('findRange falls back to the default rather than returning undefined', () => {
+  assert.equal(findRange('2y').days, 730);
+  assert.equal(findRange('nonsense').key, '30d');
+  assert.equal(findRange(undefined).key, '30d');
+});
+
+test('statisticsRequest passes the aggregation period through', () => {
+  const now = new Date('2026-09-06T12:00:00Z');
+  assert.equal(statisticsRequest(['sensor.a'], 730, ['sum'], now, 'month').period, 'month');
+  assert.equal(statisticsRequest(['sensor.a'], 730, ['sum'], now, 'month').start_time, '2024-09-06T12:00:00.000Z');
+  assert.equal(statisticsRequest(['sensor.a'], 30, ['max'], now).period, 'day', 'daily by default');
+});
+
+test('formatBucketLabel matches the bucket it is labelling', () => {
+  assert.equal(formatBucketLabel('2026-09-05', 'day'), '5 Sep');
+  assert.equal(formatBucketLabel('2026-09-05', 'week'), '5 Sep');
+  assert.equal(formatBucketLabel('2026-09-01', 'month'), 'Sep 26');
+  assert.equal(formatBucketLabel('nonsense', 'month'), 'nonsense');
+});
+
+test('renderRangesHTML marks exactly one range active', () => {
+  const html = renderRangesHTML('1y');
+  assert.equal((html.match(/class="range on"/g) || []).length, 1);
+  assert.equal((html.match(/<button/g) || []).length, RANGES.length);
+  assert.match(html, /data-range="1y" class="range on"/);
+});
+
+test('the money chart is capped and stays daily whatever range is picked', () => {
+  // Rates change over time, so cost is only comparable within a rate regime.
+  assert.ok(MONEY_MAX_DAYS <= 90);
+  const longest = RANGES[RANGES.length - 1].days;
+  assert.ok(Math.min(longest, MONEY_MAX_DAYS) === MONEY_MAX_DAYS, 'a 2-year pick must not stretch the money chart');
+  const html = renderHistoryHTML({}, '2y');
+  assert.match(html, /up to 90 days/, 'the cap is stated on the chart, not just enforced in code');
+  assert.match(html, /only comparable within a rate regime/);
 });

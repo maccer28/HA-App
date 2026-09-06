@@ -400,14 +400,43 @@ export const HISTORY_MONEY_IDS = [
   'sensor.battery_charge_cost_today',
 ];
 
-export function statisticsRequest(statisticIds, days, types, now = new Date()) {
+// Aggregation has to follow the range or a two-year view is 730 unreadable
+// bars. Roughly 13-52 buckets reads well on a phone.
+export const RANGES = [
+  { key: '30d', label: '30 days', days: 30, period: 'day' },
+  { key: '90d', label: '90 days', days: 90, period: 'week' },
+  { key: '1y', label: '1 year', days: 365, period: 'week' },
+  { key: '2y', label: '2 years', days: 730, period: 'month' },
+];
+
+export function findRange(key) {
+  return RANGES.find(r => r.key === key) || RANGES[0];
+}
+
+// Money is only comparable within a rate regime -- these rates changed on
+// 20/07/2026 and will change again -- so the saving chart stays on daily
+// buckets and never reaches back further than this, however long a range the
+// energy charts are showing. Energy in kWh is comparable across any period.
+export const MONEY_MAX_DAYS = 90;
+
+const MONTHS_LONG = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatBucketLabel(day, period = 'day') {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return day;
+  const [, yyyy, mm, dd] = m;
+  if (period === 'month') return `${MONTHS_LONG[Number(mm) - 1]} ${yyyy.slice(2)}`;
+  return `${Number(dd)} ${MONTHS_LONG[Number(mm) - 1]}`;
+}
+
+export function statisticsRequest(statisticIds, days, types, now = new Date(), period = 'day') {
   const start = new Date(now.getTime() - days * 86400000);
   return {
     type: 'recorder/statistics_during_period',
     start_time: start.toISOString(),
     end_time: now.toISOString(),
     statistic_ids: statisticIds,
-    period: 'day',
+    period,
     types,
   };
 }
@@ -637,7 +666,13 @@ function tableHTML(head, rows, numFrom = 1) {
   </table></div>`;
 }
 
-export function renderHistoryHTML(states) {
+export function renderRangesHTML(activeKey) {
+  return RANGES.map(
+    r => `<button type="button" data-range="${r.key}" class="range${r.key === activeKey ? ' on' : ''}">${r.label}</button>`
+  ).join('');
+}
+
+export function renderHistoryHTML(states, rangeKey = '30d') {
   const energy = buildEnergyTable(states)
     .map(r => `<tr><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td><td class="num">${r.lifetime}</td></tr>`)
     .join('');
@@ -655,17 +690,22 @@ export function renderHistoryHTML(states) {
       ${tableHTML(['Flow', 'This month<i>kWh</i>', 'This year<i>kWh</i>'], totals)}
     </section>
     <section class="card">
-      <h3>Grid import by tariff <em>30 days</em></h3>
+      <h3>Range</h3>
+      <div class="ranges">${renderRangesHTML(rangeKey)}</div>
+    </section>
+    <section class="card">
+      <h3>Grid import by tariff <em id="range-label">${findRange(rangeKey).label}</em></h3>
       <div class="chart"><canvas id="chart-import"></canvas></div>
     </section>
     <section class="card">
-      <h3>Battery cycled <em>30 days</em></h3>
+      <h3>Battery cycled <em class="range-label">${findRange(rangeKey).label}</em></h3>
       <div class="chart"><canvas id="chart-battery"></canvas></div>
       <p class="note">The gap between charged and discharged is round-trip loss plus whatever stayed in the battery overnight.</p>
     </section>
     <section class="card">
-      <h3>Net saving per day <em>30 days</em></h3>
+      <h3>Net saving per day <em>up to 90 days</em></h3>
       <div class="chart"><canvas id="chart-saving"></canvas></div>
+      <p class="note">Kept to daily buckets and 90 days however long a range you pick above: rates change over time, so cost is only comparable within a rate regime. Energy in kWh is comparable across any period.</p>
       <p class="note" id="saving-caveat" hidden>Days before ${MODEL_CHANGE_DATE} were recorded gross, before charge cost was subtracted; they are corrected here using that day&rsquo;s recorded charge cost. ${MODEL_CHANGE_DATE} itself is omitted &mdash; its figure spans both models and the meter reset, so it cannot be reconstructed.</p>
     </section>
     <p class="note" id="history-note">Loading statistics&hellip;</p>
@@ -723,6 +763,7 @@ if (typeof HTMLElement !== 'undefined') {
       this._activeTab = 'live';
       this._renderedTab = null;
       this._historyRendered = false;
+      this._historyRange = '30d';
       this._charts = {};
     }
 
@@ -885,6 +926,15 @@ if (typeof HTMLElement !== 'undefined') {
           tr.sum th, tr.sum td { border-top: 1px solid rgba(255,255,255,0.16); color: #34d399; font-weight: 600; }
           .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 
+          .ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+          .range {
+            min-height: 36px; padding: 0 14px; cursor: pointer;
+            background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
+            color: #7d8797; font: 500 12px Inter, system-ui, sans-serif;
+          }
+          .range:hover { color: #b9c2d0; border-color: rgba(255,255,255,0.2); }
+          .range.on { background: rgba(230,235,242,0.1); border-color: #e6ebf2; color: #e6ebf2; }
+          .range:focus-visible { outline: 2px solid #14b8a6; outline-offset: 2px; }
           .chart { position: relative; height: 220px; }
           .chart-empty {
             display: flex; align-items: center; justify-content: center; text-align: center;
@@ -910,6 +960,12 @@ if (typeof HTMLElement !== 'undefined') {
         <div id="panel-history" class="panel"></div>
         <div id="panel-financial" class="panel"></div></div>
       `;
+      this.addEventListener('click', e => {
+        const key = e.target.closest('[data-range]')?.dataset.range;
+        if (!key || key === this._historyRange) return;
+        this._historyRange = key;
+        this._render();
+      });
       // Delegated, so the listener survives the tab strip being re-rendered.
       this.querySelector('#tabs').addEventListener('click', e => {
         const key = e.target.closest('[data-tab]')?.dataset.tab;
@@ -950,9 +1006,9 @@ if (typeof HTMLElement !== 'undefined') {
       } else if (this._activeTab === 'history') {
         // Charts own their canvases, so only rebuild the shell once — a
         // re-render on every state change would destroy them continuously.
-        if (!this._historyRendered) {
-          this._historyRendered = true;
-          panels.history.innerHTML = renderHistoryHTML(states);
+        if (this._historyRendered !== this._historyRange) {
+          this._historyRendered = this._historyRange;
+          panels.history.innerHTML = renderHistoryHTML(states, this._historyRange);
           this._loadHistory();
         }
       }
@@ -976,10 +1032,14 @@ if (typeof HTMLElement !== 'undefined') {
       const note = () => this.querySelector('#history-note');
       try {
         await this._loadChartJS();
+        const range = findRange(this._historyRange);
         const [energy, battery, money] = await Promise.all([
-          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_ENERGY_IDS, 30, ['sum'])),
-          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_BATTERY_IDS, 30, ['sum'])),
-          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_MONEY_IDS, 30, ['max'])),
+          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_ENERGY_IDS, range.days, ['sum'], undefined, range.period)),
+          this._hass.connection.sendMessagePromise(statisticsRequest(HISTORY_BATTERY_IDS, range.days, ['sum'], undefined, range.period)),
+          // Money stays daily and capped, whatever range the energy charts show.
+          this._hass.connection.sendMessagePromise(
+            statisticsRequest(HISTORY_MONEY_IDS, Math.min(range.days, MONEY_MAX_DAYS), ['max'])
+          ),
         ]);
 
         const importSeries = {};
@@ -988,7 +1048,7 @@ if (typeof HTMLElement !== 'undefined') {
         }
         const importAligned = alignSeries(importSeries);
         if (importAligned.days.length) {
-          this._drawStacked('chart-import', importAligned, 'kWh');
+          this._drawStacked('chart-import', importAligned, 'kWh', range.period);
         } else {
           this._empty(
             'chart-import',
@@ -998,7 +1058,7 @@ if (typeof HTMLElement !== 'undefined') {
 
         const cycles = alignSeries(batteryCycleSeries(battery));
         if (cycles.days.length) {
-          this._drawGrouped('chart-battery', cycles, 'kWh');
+          this._drawGrouped('chart-battery', cycles, 'kWh', range.period);
         } else {
           this._empty('chart-battery', 'No daily statistics yet. Fills in once the battery meters complete their first full day.');
         }
@@ -1010,7 +1070,7 @@ if (typeof HTMLElement !== 'undefined') {
           ),
         });
         if (savingAligned.days.length) {
-          this._drawBars('chart-saving', savingAligned, '\u20ac');
+          this._drawBars('chart-saving', savingAligned, '\u20ac', 'day');
           const warn = this.querySelector('#saving-caveat');
           if (warn) warn.hidden = false;
         } else {
@@ -1026,10 +1086,10 @@ if (typeof HTMLElement !== 'undefined') {
       }
     }
 
-    _chartBase(labels, datasets, unit) {
+    _chartBase(labels, datasets, unit, period = 'day') {
       return {
         type: 'bar',
-        data: { labels: labels.map(formatDayLabel), datasets },
+        data: { labels: labels.map(l => formatBucketLabel(l, period)), datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -1042,7 +1102,7 @@ if (typeof HTMLElement !== 'undefined') {
       };
     }
 
-    _drawStacked(canvasId, { days, datasets }, unit) {
+    _drawStacked(canvasId, { days, datasets }, unit, period) {
       const colors = [TARIFF.night_boost, TARIFF.night, TARIFF.day, TARIFF.peak];
       const sets = Object.entries(datasets).map(([label, data], i) => ({
         label, data, backgroundColor: colors[i % colors.length],
@@ -1050,24 +1110,24 @@ if (typeof HTMLElement !== 'undefined') {
       this._mount(canvasId, this._chartBase(days, sets, unit));
     }
 
-    _drawGrouped(canvasId, { days, datasets }, unit) {
+    _drawGrouped(canvasId, { days, datasets }, unit, period) {
       const colors = { Charged: '#6366f1', Discharged: '#14b8a6' };
       const sets = Object.entries(datasets).map(([label, data]) => ({
         label, data, backgroundColor: colors[label] || '#7d8797',
       }));
-      const cfg = this._chartBase(days, sets, unit);
+      const cfg = this._chartBase(days, sets, unit, period);
       cfg.options.scales.x.stacked = false;
       cfg.options.scales.y.stacked = false;
       this._mount(canvasId, cfg);
     }
 
-    _drawBars(canvasId, { days, datasets }, unit) {
+    _drawBars(canvasId, { days, datasets }, unit, period) {
       const sets = Object.entries(datasets).map(([label, data]) => ({
         label,
         data,
         backgroundColor: data.map(v => (v < 0 ? '#ef4444' : '#22c55e')),
       }));
-      this._mount(canvasId, this._chartBase(days, sets, unit));
+      this._mount(canvasId, this._chartBase(days, sets, unit, period));
     }
 
     // A chart with no rows renders as an empty grid, which reads as broken
