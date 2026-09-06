@@ -790,3 +790,23 @@ test('household consumption comes from metered flows, not the inverter load sens
   const rows = buildEnergyTable({ 'sensor.house_energy_today': { state: '8.24' } });
   assert.equal(rows.find(r => r.label === 'Home load').today, '8.24');
 });
+
+test('tile units are separate from their figures so they can be set smaller', () => {
+  const rows = buildPerformance({
+    'sensor.effective_unit_rate_yesterday': { state: '0.1833' },
+    'sensor.battery_round_trip_efficiency': { state: '93.3' },
+    'sensor.total_energy_saving': { state: '141.91' },
+  });
+  const by = Object.fromEntries(rows.map(r => [r.label, r]));
+  assert.deepEqual(
+    { figure: by['Effective rate'].figure, unit: by['Effective rate'].unit },
+    { figure: '0.1833', unit: '€/kWh' }
+  );
+  assert.deepEqual({ figure: by['Round trip'].figure, unit: by['Round trip'].unit }, { figure: '93.3', unit: '%' });
+  // currency is a prefix, so it stays part of the figure rather than trailing it
+  assert.deepEqual(
+    { figure: by['Saved since install'].figure, unit: by['Saved since install'].unit },
+    { figure: '€141.91', unit: '' }
+  );
+  for (const r of buildPerformance({})) assert.equal(r.unit, '', 'a missing figure carries no orphan unit');
+});

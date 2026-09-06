@@ -558,11 +558,16 @@ const PERFORMANCE = [
 export function buildPerformance(states) {
   return PERFORMANCE.map(([label, entityId, dp, unit, hint]) => {
     const value = numOrNull(states, entityId);
+    // Figure and unit are kept apart so the panel can set the unit smaller.
+    // "0.1833 €/kWh" all at one weight reads as a string; the number should
+    // dominate and the unit should qualify it.
+    const isMoney = unit === '€';
     return {
       label,
       hint: typeof hint === 'function' ? hint(states) : hint,
-      // Currency reads €139.33, not "139.33 €"
-      text: unit === '€' ? fmtEuro(value) : fmtNum(value, dp, unit),
+      figure: value === null ? DASH : isMoney ? fmtEuro(value) : value.toFixed(dp),
+      unit: value === null || isMoney ? '' : unit,
+      text: isMoney ? fmtEuro(value) : fmtNum(value, dp, unit),
     };
   });
 }
@@ -655,7 +660,9 @@ export function renderLiveHTML(states, now = new Date()) {
   const pct = batt.soc === null ? 0 : Math.max(0, Math.min(100, batt.soc));
 
   const perf = buildPerformance(states)
-    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
+    .map(
+      t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.figure}${t.unit ? `<span class="u">${t.unit}</span>` : ''}</b><span class="h">${t.hint}</span></div>`
+    )
     .join('');
 
   const nodes = flow
@@ -931,6 +938,10 @@ if (typeof HTMLElement !== 'undefined') {
             overflow-wrap: anywhere; min-width: 0;
           }
           .tile .h { color: #4d5666; font-size: 10.5px; line-height: 1.35; }
+          .tile .v .u {
+            font-size: 0.55em; font-weight: 500; color: #7d8797;
+            margin-left: 4px; letter-spacing: 0;
+          }
 
           .soc { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
           .soc-k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
