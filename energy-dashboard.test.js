@@ -405,7 +405,8 @@ test('renderLiveHTML names the active tariff period and tints it', () => {
     ...liveStates,
     'sensor.current_tariff_period': { state: 'day', attributes: { hours, rates: { day: 0.3233 } } },
   });
-  assert.match(known, /class="eyebrow" style="color:#f0a12e">Day</, 'active period is named and tinted');
+  assert.match(known, /<span class="k" style="color:#f0a12e">Day</, 'the band in force names the rate reading');
+  assert.match(known, /<b class="v" style="color:#f0a12e">€/, 'and tints the figure to match');
   assert.match(known, /class="seg on"/, 'the ribbon marks the band in force');
   assert.match(known, /2\.45 kW/);
 
@@ -650,9 +651,11 @@ test('every grid container lets its children shrink below content width', () => 
   // overflow-x:hidden, so the card was silently cut off on a phone rather than
   // scrolling. Assert the CSS that prevents it, since there is no DOM here.
   const css = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
-  for (const container of ['.panel > *', '.grid4 > *', '.tiles > *', '.pairs > div']) {
+  for (const container of ['.panel > *', '.grid4 > *', '.grid5 > *', '.tiles > *', '.pairs > div']) {
+    const esc = container.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     assert.ok(
-      new RegExp(container.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*min-width:\\s*0').test(css),
+      new RegExp(esc + '(?:,[^{]*)?\\s*\\{[^}]*min-width:\\s*0').test(css) ||
+      new RegExp('[^{]*,\\s*' + esc + '\\s*\\{[^}]*min-width:\\s*0').test(css),
       `${container} must set min-width: 0`
     );
   }
@@ -665,11 +668,13 @@ test('Live is one System card holding rate, flow and readings in that order', ()
   });
   assert.deepEqual([...html.matchAll(/<h3>([^<]+)/g)].map(m => m[1]), ['System', 'Performance']);
 
-  // rate, then what is flowing, then the supporting readings -- all one card
+  // the live readings (rate among them), the day's bands, charge, then details
   const sys = html.slice(html.indexOf('<h3>System'), html.indexOf('<h3>Performance'));
-  const order = ['class="rate"', 'class="ribbon"', 'grid4 tier', 'class="soc tier"', 'pairs sub'].map(t => sys.indexOf(t));
+  const order = ['class="grid5"', 'class="ribbon"', 'class="soc tier"', 'pairs sub'].map(t => sys.indexOf(t));
   assert.ok(order.every(i => i > -1), 'every tier is present in the System card');
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'tiers appear in order of prominence');
+  // the rate is a reading in the row now, not a banner above it
+  assert.ok(sys.indexOf('per kWh') < sys.indexOf('class="ribbon"'), 'the rate sits in the row');
 });
 
 test('each range picks an aggregation that stays readable', () => {

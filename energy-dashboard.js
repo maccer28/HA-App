@@ -653,13 +653,20 @@ export function renderLiveHTML(states, now = new Date()) {
   // One System card, three tiers of prominence: the rate in force, then what is
   // flowing, then the supporting readings — which stay quiet so the first two
   // remain what you read.
+  // The rate sits in the flow row as a fifth reading, tinted by the band in
+  // force, with the day's bands as a slim bar beneath the row. It reads as one
+  // of the live figures rather than a banner above them.
+  const rateNode = `<div class="node">
+    <span class="k" style="color:${accent}">${r.label}</span>
+    <b class="v" style="color:${accent}">€${r.rateText}</b>
+    <span class="d">per kWh</span>
+  </div>`;
+
   return `
     <section class="hero">
       <h3>System</h3>
-      <span class="eyebrow" style="color:${accent}">${r.label}</span>
-      <div class="rate"><span class="cur">€</span>${r.rateText}<span class="per">/kWh</span></div>
+      <div class="grid5">${rateNode}${nodes}</div>
       ${ribbonHTML(r)}
-      <div class="grid4 tier">${nodes}</div>
       <div class="soc tier"><span class="soc-k">Battery</span><div class="soc-bar"><i style="width:${pct}%"></i></div><b>${batt.socText}</b></div>
       <dl class="pairs sub">${stats.map(x => `<div><dt>${x.label}</dt><dd>${x.text}</dd></div>`).join('')}</dl>
     </section>
@@ -835,7 +842,7 @@ if (typeof HTMLElement !== 'undefined') {
           .rate .per { font-size: 0.3em; letter-spacing: 0.06em; color: #7d8797; margin-left: 6px; }
 
           /* The signature: the day as proportional price bands. */
-          .ribbon { position: relative; display: flex; height: 14px; border-radius: 7px; overflow: hidden; }
+          .ribbon { position: relative; display: flex; height: 9px; border-radius: 5px; overflow: hidden; }
           .ribbon .seg {
             display: block; height: 100%;
             filter: saturate(0.5) brightness(0.62);
@@ -843,7 +850,7 @@ if (typeof HTMLElement !== 'undefined') {
           }
           .ribbon .seg.on { filter: none; }
           .ribbon .now {
-            position: absolute; top: -3px; width: 2px; height: 20px; margin-left: -1px;
+            position: absolute; top: -3px; width: 2px; height: 15px; margin-left: -1px;
             background: #e6ebf2; border-radius: 1px; box-shadow: 0 0 6px rgba(230,235,242,0.9);
           }
           .ticks { position: relative; height: 14px; margin-top: 5px; }
@@ -852,8 +859,9 @@ if (typeof HTMLElement !== 'undefined') {
             font: 500 10px ui-monospace, 'JetBrains Mono', monospace; color: #4d5666;
           }
 
-          .grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
-          .grid4 > * { min-width: 0; }
+          .grid4, .grid5 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 10px; }
+          .grid4 > *, .grid5 > * { min-width: 0; }
+          .grid5 { margin-bottom: 16px; }
           .node { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
           .node .k { color: #7d8797; font: 500 11px Inter, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
           .node .d {
@@ -900,7 +908,7 @@ if (typeof HTMLElement !== 'undefined') {
           .pairs.sub { margin-top: 4px; }
           .pairs.sub dt { font-size: 11px; }
           .pairs.sub dd { font-size: 12px; color: #b9c2d0; }
-          .tier { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.07); }
+          .tier { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.07); }
           .pairs > div { min-width: 0; }
           .pairs > div {
             display: flex; justify-content: space-between; gap: 10px;
@@ -956,6 +964,7 @@ if (typeof HTMLElement !== 'undefined') {
             .panel { padding: 16px; gap: 16px; }
             .hero, .card { padding: 20px; }
             .grid4 { grid-template-columns: repeat(4, 1fr); }
+            .grid5 { grid-template-columns: repeat(5, 1fr); }
             .pairs { grid-template-columns: repeat(3, 1fr); }
             .tiles { grid-template-columns: repeat(4, 1fr); }
             .scroll { margin: 0 -20px; padding: 0 20px; }
