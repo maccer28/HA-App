@@ -1436,4 +1436,4 @@ panel_custom:
     #
     # If a URL does get poisoned, bump this to a value never requested. Entries
     # also expire on their own within about a day.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.3
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.4

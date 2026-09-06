@@ -624,6 +624,8 @@ test('buildPerformance renders each ratio with its own precision and a reading h
   assert.equal(by['Effective rate'], '0.0817 €/kWh');
   assert.match(rows.find(r => r.label === 'Effective rate').hint, /yesterday/,
     'the headline rate must say it is a completed day');
+  assert.match(rows.find(r => r.label === 'Effective rate').hint, /all-in/,
+    'and that the standing charge is folded in');
   assert.equal(by['Payback'], '2.95 yr');
   assert.ok(rows.every(r => r.hint && r.hint.length), 'every tile explains how to read it');
 
@@ -809,4 +811,17 @@ test('tile units are separate from their figures so they can be set smaller', ()
     { figure: '€141.91', unit: '' }
   );
   for (const r of buildPerformance({})) assert.equal(r.unit, '', 'a missing figure carries no orphan unit');
+});
+
+test('the effective-rate benchmark is read from the rate helper, not hardcoded', () => {
+  // It was written into the JS as 0.3578, which would silently become wrong at
+  // the next price change -- the reason rates moved into helpers in the first place.
+  const js = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  assert.ok(!/vs €0\.3578/.test(js), 'no hardcoded day rate remains in the hints');
+
+  const hint = k => buildPerformance(k).find(r => r.label === 'Effective rate').hint;
+  assert.match(hint({ 'input_number.rate_day': { state: '0.3578' } }), /day rate €0\.3578/);
+  assert.match(hint({ 'input_number.rate_day': { state: '0.4100' } }), /day rate €0\.4100/,
+    'it follows the helper when the rate changes');
+  assert.equal(hint({}), 'yesterday, all-in', 'and drops the comparison rather than inventing one');
 });

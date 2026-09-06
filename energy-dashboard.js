@@ -546,7 +546,14 @@ const PERFORMANCE = [
     return days === null ? 'net of charging cost' : `over ${days.toFixed(0)} days, net of charging`;
   }],
   ['Round trip', 'sensor.battery_round_trip_efficiency', 1, '%', 'energy out vs in, lifetime'],
-  ['Effective rate', 'sensor.effective_unit_rate_yesterday', 4, '\u20ac/kWh', 'yesterday, all-in, vs €0.3578 day rate'],
+  // The benchmark is read from the rate helper, not written into this file.
+  // It was hardcoded as 0.3578, which would have quietly become a lie at the
+  // next price change -- the same class of drift the rates were moved into
+  // helpers to prevent.
+  ['Effective rate', 'sensor.effective_unit_rate_yesterday', 4, '\u20ac/kWh', st => {
+    const day = numOrNull(st, 'input_number.rate_day');
+    return day === null ? 'yesterday, all-in' : `yesterday, all-in \u00b7 day rate €${day.toFixed(4)}`;
+  }],
   ['Rate so far today', 'sensor.effective_unit_rate_today', 4, '\u20ac/kWh', 'runs high until the battery discharges'],
   ['Self sufficiency', 'sensor.self_sufficiency_today', 1, '%', 'load met without importing'],
   ['Peak import', 'sensor.peak_import_share_today', 1, '%', 'share bought at the worst rate'],
