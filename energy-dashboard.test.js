@@ -649,3 +649,17 @@ test('every grid container lets its children shrink below content width', () => 
     );
   }
 });
+
+test('Live is one System card holding rate, flow and readings in that order', () => {
+  const html = renderLiveHTML({
+    ...liveStates,
+    'sensor.current_tariff_period': { state: 'day', attributes: { hours: Array(24).fill('day'), rates: { day: 0.3233 } } },
+  });
+  assert.deepEqual([...html.matchAll(/<h3>([^<]+)/g)].map(m => m[1]), ['System', 'Performance', 'Battery']);
+
+  // rate, then what is flowing, then the supporting readings -- all one card
+  const sys = html.slice(html.indexOf('<h3>System'), html.indexOf('<h3>Performance'));
+  const order = ['class="rate"', 'class="ribbon"', 'grid4 tier', 'pairs sub'].map(t => sys.indexOf(t));
+  assert.ok(order.every(i => i > -1), 'every tier is present in the System card');
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'tiers appear in order of prominence');
+});

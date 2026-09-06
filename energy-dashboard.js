@@ -599,6 +599,10 @@ export function renderLiveHTML(states, now = new Date()) {
   const accent = r.activeKey ? TARIFF[r.activeKey] : '#7d8797';
   const pct = batt.soc === null ? 0 : Math.max(0, Math.min(100, batt.soc));
 
+  const perf = buildPerformance(states)
+    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
+    .join('');
+
   const nodes = flow
     .map(
       n => `<div class="node">
@@ -609,19 +613,17 @@ export function renderLiveHTML(states, now = new Date()) {
     )
     .join('');
 
-  const perf = buildPerformance(states)
-    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
-    .join('');
-
+  // One System card, three tiers of prominence: the rate in force, then what is
+  // flowing, then the supporting readings — which stay quiet so the first two
+  // remain what you read.
   return `
     <section class="hero">
+      <h3>System</h3>
       <span class="eyebrow" style="color:${accent}">${r.label}</span>
       <div class="rate"><span class="cur">€</span>${r.rateText}<span class="per">/kWh</span></div>
       ${ribbonHTML(r)}
-    </section>
-    <section class="card">
-      <h3>Power</h3>
-      <div class="grid4">${nodes}</div>
+      <div class="grid4 tier">${nodes}</div>
+      <dl class="pairs sub">${stats.map(x => `<div><dt>${x.label}</dt><dd>${x.text}</dd></div>`).join('')}</dl>
     </section>
     <section class="card">
       <h3>Performance</h3>
@@ -636,16 +638,9 @@ export function renderLiveHTML(states, now = new Date()) {
         <div><dt>Health</dt><dd>${batt.sohText}</dd></div>
       </dl>
     </section>
-    <section class="card">
-      <h3>System</h3>
-      <dl class="pairs">${stats.map(x => `<div><dt>${x.label}</dt><dd>${x.text}</dd></div>`).join('')}</dl>
-    </section>
   `;
 }
 
-// numFrom: index of the first numeric column. Everything from there right-aligns
-// with the figures beneath it; label columns stay left. The money chain has two
-// label columns (the operator and the metric), so it passes 2.
 function tableHTML(head, rows, numFrom = 1) {
   return `<div class="scroll"><table>
     <thead><tr>${head.map((h, i) => `<th${i >= numFrom ? ' class="num"' : ''}>${h}</th>`).join('')}</tr></thead>
@@ -859,6 +854,12 @@ if (typeof HTMLElement !== 'undefined') {
           }
 
           .pairs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; margin: 0; }
+          /* Merged into the System card beneath the rate and the power flow,
+             deliberately quieter so those stay what you read first. */
+          .pairs.sub { margin-top: 4px; }
+          .pairs.sub dt { font-size: 11px; }
+          .pairs.sub dd { font-size: 12px; color: #b9c2d0; }
+          .tier { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.07); }
           .pairs > div { min-width: 0; }
           .pairs > div {
             display: flex; justify-content: space-between; gap: 10px;
