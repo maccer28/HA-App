@@ -77,12 +77,19 @@ a native web component. See `CLAUDE.md` for full technical details.
    ```
 
    `Add Daily Arbitrage at Midnight` has no solar term and needs no change.
-5. Copy `ha-config/packages/tariff_period_breakdown.yaml` from this repo
+5. **Update via HACS first, then copy the package.** The order matters if the
+   host is behind a CDN: the package pins `module_url` to a versioned URL, and
+   copying it before HACS has the file points HA at a URL that does not exist
+   yet. The CDN caches that 404, and the panel then fails with *"Unable to load
+   custom panel"* even once HACS downloads the file, because the URL is pinned
+   to the miss. Recovering means bumping `?v=` to a value never requested.
+
+6. Copy `ha-config/packages/tariff_period_breakdown.yaml` from this repo
    into your HA config's `packages/` directory (create it if it doesn't
    exist, and add `packages: !include_dir_named packages` under the
    `homeassistant:` key in `configuration.yaml` if you haven't already).
-6. Restart Home Assistant.
-7. In HACS's file list for this repo, confirm the served path for
+7. Restart Home Assistant.
+8. In HACS's file list for this repo, confirm the served path for
    `energy-dashboard.js` (usually `/hacsfiles/HA-App/energy-dashboard.js`)
    matches the `module_url` in `tariff_period_breakdown.yaml`'s
    `panel_custom` entry — edit and re-copy the package file if it differs.
@@ -99,10 +106,10 @@ a native web component. See `CLAUDE.md` for full technical details.
    release instead. That works, but makes each upgrade a two-step job (HACS
    update *and* re-copy this package), and forgetting the second step fails
    silently.
-8. Check the HA log for `Duplicate unique_id` — any hit means one of the
+9. Check the HA log for `Duplicate unique_id` — any hit means one of the
    blocks in step 4 was not deleted, and the old inaccurate sensor is still
    the one in use.
-9. An "Energy" item should appear in the HA sidebar.
+10. An "Energy" item should appear in the HA sidebar.
 
 ### Where yesterday's numbers come from
 

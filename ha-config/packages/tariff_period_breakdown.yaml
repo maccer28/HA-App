@@ -1411,7 +1411,17 @@ panel_custom:
     sidebar_title: Energy
     sidebar_icon: mdi:lightning-bolt
     url_path: energy-dashboard
-    # BUMP THIS ON EVERY RELEASE to match the version installed via HACS.
+    # BUMP THIS ON EVERY RELEASE to match the version installed via HACS, and
+    # UPDATE HACS FIRST, then copy this file.
+    #
+    # Order matters because the CDN caches misses as well as hits. Copying this
+    # file first points HA at a URL that does not exist yet; the 404 is cached,
+    # and the panel then fails to load with "Unable to load custom panel" even
+    # after HACS downloads the file, because that URL is pinned to the miss.
+    # Observed 2026-09-06: ?v=0.9.2 returned 404 while ?cb=<random> returned the
+    # correct 54798-byte file from the same path.
+    #
+    # If it happens anyway, bump this to a value that has never been requested.
     #
     # A CDN in front of this host caches /hacsfiles/*.js keyed on the full URL,
     # so a novel URL fetches from origin while a previously-seen one is frozen.
@@ -1431,4 +1441,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.2
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.3
