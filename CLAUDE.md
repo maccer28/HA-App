@@ -92,6 +92,24 @@ Verified live against the HA API on 2026-09-05:
   measurements. Daily deltas look consistent, but if solar figures ever look
   off, this discrepancy is the first thing to check.
 
+## Battery protection (no temperature is reported, by design)
+`sensor.solis_s6_eh1p_battery_temperature_bms` reads a constant **0.0 °C** and
+always has. This is not a fault: the Lithtech pack has no temperature gauge on
+its own screen either, and does not publish one over RS485.
+
+Protection still works, expressed as a current limit rather than a temperature.
+Measured over 45 days, `battery_charge_current_limitation_bms` ranged
+**40–157 A** while the discharge limit sat flat at 195 A — the pack actively
+throttling the inverter, which obeys it.
+
+**If a night charge ever fails, look at that sensor first.** A limit of 0 means
+the BMS blocked charging (cold being the usual cause). The symptom downstream is
+an empty battery in the morning and a day bought at the day rate instead of the
+EV rate — roughly €2–3 — which otherwise presents as "the figures look wrong".
+
+`sensor.solis_s6_eh1p_lead_acid_battery_temperature` reads −200.1 °C and is a
+different register for a battery type not fitted here. Ignore it.
+
 ## HA API access
 The host **is** reachable from this repo at `https://ha.ma33er.xyz` (the LAN IP
 192.168.1.240 is not). A long-lived token lives in `.ha_token` (gitignored):
