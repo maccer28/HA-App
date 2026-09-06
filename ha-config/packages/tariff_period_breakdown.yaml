@@ -1406,6 +1406,56 @@ automation:
         data:
           value: "{{ (states('input_number.total_arbitrage_peak') | float(0) + states('sensor.arbitrage_today_peak') | float(0)) | round(2) }}"
 
+  # One message a day beats three alert conditions, which get muted. Fires after
+  # the meters have rolled over, so every yesterday figure is settled.
+  #
+  # Target: notify.mobile_app_macphone. The companion app creates one service per
+  # registered device; `notify.notify` would reach every device on the account,
+  # including other people's. Change the service below to retarget.
+  - alias: "Energy Morning Report"
+    id: energy_morning_report
+    trigger:
+      - platform: time
+        at: "07:30:00"
+    action:
+      - variables:
+          saving: "{{ states('sensor.energy_saving_yesterday') }}"
+          # The yesterday sensors go unavailable when the meters did not cover a
+          # whole day. Saying so is more use than printing "unavailable".
+          settled: "{{ saving not in ['unknown', 'unavailable', 'none'] }}"
+          rate: "{{ states('sensor.effective_unit_rate_yesterday') }}"
+          day_rate: "{{ states('input_number.rate_day') | float(0) }}"
+          charged: "{{ states('sensor.solis_s6_eh1p_yesterday_battery_charge_energy') | float(0) }}"
+          discharged: "{{ states('sensor.solis_s6_eh1p_yesterday_battery_discharge_energy') | float(0) }}"
+          solar: "{{ states('sensor.solar_yesterday_kwh') }}"
+          drift: "{{ states('sensor.tariff_meter_drift_yesterday') | float(0) }}"
+      - service: notify.mobile_app_macphone
+        data:
+          title: >
+            {% if settled %}
+              Yesterday you saved €{{ saving }}
+            {% else %}
+              Yesterday's figures are incomplete
+            {% endif %}
+          message: >
+            {%- if settled -%}
+            €{{ rate }}/kWh all-in, against a €{{ '%.4f' % day_rate }} day rate.
+            Battery {{ '%.1f' % charged }} kWh in, {{ '%.1f' % discharged }} out{% if solar not in ['unknown','unavailable','none'] %}, solar {{ solar }} kWh{% endif %}.
+            Lifetime €{{ states('sensor.total_energy_saving') }} over {{ states('sensor.days_since_install') }} days, payback {{ states('sensor.payback_years_remaining') }} yr.
+            {%- if drift | abs > 1.0 %}
+            ⚠ Meters are {{ '%.1f' % (drift | abs) }} kWh short of the inverter's own total, so these figures undercount.
+            {%- endif -%}
+            {%- else -%}
+            The tariff meters did not cover a whole day{% if drift | abs > 1.0 %} — they are {{ '%.1f' % (drift | abs) }} kWh short of the inverter's total{% endif %}.
+            Nothing is broken; the figures return once a full day completes.
+            {%- endif -%}
+          data:
+            # Replaces yesterday's report rather than stacking a new one each day.
+            tag: energy-morning-report
+            channel: Energy
+            url: /energy-dashboard
+
+
 panel_custom:
   - name: energy-dashboard
     sidebar_title: Energy

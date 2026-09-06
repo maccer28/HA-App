@@ -112,6 +112,29 @@ a native web component. See `CLAUDE.md` for full technical details.
    the one in use.
 10. An "Energy" item should appear in the HA sidebar.
 
+### Morning report
+
+`Energy Morning Report` sends one notification at **07:30** to
+`notify.mobile_app_macphone` with yesterday's settled figures — saving, all-in
+unit rate against the day rate, battery in/out, solar, lifetime total and
+payback.
+
+To retarget it, change that service. The companion app creates one
+`notify.mobile_app_<device>` per registered device; `notify.notify` reaches every
+device on the account, including other people's phones. To change the time, edit
+the trigger.
+
+It carries `tag: energy-morning-report`, so each day's message replaces the last
+rather than stacking, and links through to the panel.
+
+Two cases it handles rather than printing raw sensor states:
+
+- **The meters did not cover a whole day** — the yesterday sensors go
+  unavailable, and the message says so and that nothing is broken, instead of
+  reporting "unavailable".
+- **The meters lost energy** — a warning line naming the shortfall in kWh is
+  appended, so an undercounting figure is not read as a bad day.
+
 ### Where yesterday's numbers come from
 
 Each `utility_meter` tariff sensor exposes a `last_period` attribute holding its
