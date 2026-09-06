@@ -231,10 +231,14 @@ const ENERGY_FLOWS = [
     'sensor.solis_s6_eh1p_yesterday_battery_discharge_energy',
     'sensor.solis_s6_eh1p_total_battery_discharge_energy',
   ],
+  // Today and yesterday come from metered flows, not the inverter's household
+  // load figure, which counts battery charging as consumption and cannot see
+  // the AC-coupled solar. The lifetime column keeps the inverter's own total
+  // because there is no clean alternative for it -- it reads high.
   [
     'Home load',
-    'sensor.solis_s6_eh1p_household_load_today_energy',
-    'sensor.solis_s6_eh1p_yesterday_energy_consumption',
+    'sensor.house_energy_today',
+    'sensor.house_energy_yesterday',
     'sensor.solis_s6_eh1p_household_load_total_energy',
   ],
 ];

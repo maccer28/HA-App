@@ -139,7 +139,7 @@ const liveStates = {
   'sensor.solis_s6_eh1p_today_battery_discharge_energy': { state: '2.4' },
   'sensor.solis_s6_eh1p_today_energy_imported_from_grid': { state: '5.05' },
   'sensor.solis_s6_eh1p_today_energy_fed_into_grid': { state: '1.2' },
-  'sensor.solis_s6_eh1p_household_load_today_energy': { state: '11.7' },
+  'sensor.house_energy_today': { state: '11.7' },
 
   'sensor.energy_cost_today': { state: '2.31' },
   'sensor.energy_cost_yesterday': { state: '2.90' },
@@ -776,4 +776,17 @@ test('Financial states each figure once', () => {
   assert.ok(!detail.includes('Solar value'), 'solar value is stated once, in the chain');
   assert.ok(!detail.includes('Battery charge cost'), 'charge cost is stated once, in the chain');
   assert.equal(chain.filter(l => detail.includes(l)).length, 0, 'no label appears in both blocks');
+});
+
+test('household consumption comes from metered flows, not the inverter load sensor', () => {
+  // The inverter's household_load counts battery charging as consumption and
+  // cannot see the AC-coupled solar, so it is wrong in both directions.
+  const js = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  assert.ok(!/ENERGY_FLOWS[\s\S]*?household_load_today_energy/.test(js),
+    'the today column must not use the inverter load sensor');
+  assert.ok(!js.includes('yesterday_energy_consumption'),
+    'nor the yesterday one');
+
+  const rows = buildEnergyTable({ 'sensor.house_energy_today': { state: '8.24' } });
+  assert.equal(rows.find(r => r.label === 'Home load').today, '8.24');
 });

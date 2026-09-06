@@ -776,6 +776,60 @@ template:
           {% set pe = (state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0)) * states('input_number.rate_peak') | float(0.4615) %}
           {{ (nb + ni + da + pe) | round(2) }}
 
+      # ─── TRUE HOUSEHOLD CONSUMPTION ─────────────────────────────
+      # sensor.solis_s6_eh1p_household_load_* cannot be used for this. Measured
+      # over a 10-day holiday in Aug 2026, with nobody home, it was wrong twice
+      # over:
+      #
+      #   * It counts battery charging as household load. At 02:00 it reported
+      #     1536 W while the battery was drawing 4937 W, inflating the metered
+      #     daily figure by about 1.7 kWh on every charging day.
+      #   * It cannot see the AC-coupled solar, which is on a separate inverter,
+      #     so through the middle of the day it reports load NET of solar. The
+      #     raw profile bottomed out at 13:00 -- not less use, just solar
+      #     covering it.
+      #
+      # This derives consumption from metered flows instead: what the battery
+      # and solar delivered, plus what the grid delivered that did not go into
+      # the battery. Clamped at zero, since a period can import purely to charge.
+      - name: "House Energy Today"
+        unique_id: house_energy_today
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        icon: mdi:home-lightning-bolt
+        state: >
+          {% set imp = states('sensor.grid_import_daily_night_boost') | float(0) + states('sensor.grid_import_daily_night') | float(0) + states('sensor.grid_import_daily_day') | float(0) + states('sensor.grid_import_daily_peak') | float(0) %}
+          {% set chg = states('sensor.battery_charge_daily_night_boost') | float(0) + states('sensor.battery_charge_daily_night') | float(0) + states('sensor.battery_charge_daily_day') | float(0) + states('sensor.battery_charge_daily_peak') | float(0) %}
+          {% set dis = states('sensor.battery_discharge_daily_night_boost') | float(0) + states('sensor.battery_discharge_daily_night') | float(0) + states('sensor.battery_discharge_daily_day') | float(0) + states('sensor.battery_discharge_daily_peak') | float(0) %}
+          {% set sol = states('sensor.solar_daily_night_boost') | float(0) + states('sensor.solar_daily_night') | float(0) + states('sensor.solar_daily_day') | float(0) + states('sensor.solar_daily_peak') | float(0) %}
+          {{ ([dis + sol + imp - chg, 0] | max) | round(2) }}
+
+      - name: "House Energy Yesterday"
+        unique_id: house_energy_yesterday
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: measurement
+        icon: mdi:home-lightning-bolt
+        # Unavailable rather than falsely reporting EUR 0.00 when the meters
+        # hold no data for yesterday (first day after install, or HA was down
+        # across the rollover). The panel renders unavailable as a dash. The
+        # `inverter == 0` arm keeps the sensor available on a genuine
+        # zero-import day rather than treating that as missing data.
+        availability: >
+          {% set metered = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0)
+            + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
+          {{ metered > 0 or inverter == 0 }}
+        state: >
+          {% set imp = state_attr('sensor.grid_import_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.grid_import_daily_night', 'last_period') | float(0) + state_attr('sensor.grid_import_daily_day', 'last_period') | float(0) + state_attr('sensor.grid_import_daily_peak', 'last_period') | float(0) %}
+          {% set chg = state_attr('sensor.battery_charge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_charge_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_charge_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_charge_daily_peak', 'last_period') | float(0) %}
+          {% set dis = state_attr('sensor.battery_discharge_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_night', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_day', 'last_period') | float(0) + state_attr('sensor.battery_discharge_daily_peak', 'last_period') | float(0) %}
+          {% set sol = state_attr('sensor.solar_daily_night_boost', 'last_period') | float(0) + state_attr('sensor.solar_daily_night', 'last_period') | float(0) + state_attr('sensor.solar_daily_day', 'last_period') | float(0) + state_attr('sensor.solar_daily_peak', 'last_period') | float(0) %}
+          {{ ([dis + sol + imp - chg, 0] | max) | round(2) }}
+
       # ─── PERFORMANCE ────────────────────────────────────────────
       # Ratios that say whether the system is doing its job, as opposed to how
       # much energy moved. Each guards its own divisor: a ratio with nothing to
@@ -818,10 +872,10 @@ template:
         unit_of_measurement: "EUR/kWh"
         state_class: measurement
         icon: mdi:tag-text
-        availability: "{{ states('sensor.solis_s6_eh1p_household_load_today_energy') | float(0) > 0 }}"
+        availability: "{{ states('sensor.house_energy_today') | float(0) > 0 }}"
         state: >
           {{ (states('sensor.energy_cost_today') | float(0)
-             / states('sensor.solis_s6_eh1p_household_load_today_energy') | float(1)) | round(4) }}
+             / states('sensor.house_energy_today') | float(1)) | round(4) }}
 
       # A completed day, so free of the intraday swing above. This is the
       # honest answer to "am I beating the tariff": compare it against the day
@@ -844,7 +898,7 @@ template:
           {% set inverter = states('sensor.solis_s6_eh1p_yesterday_energy_imported_from_grid') | float(0) %}
           {{ metered > 0 or inverter == 0 }}
         state: >
-          {% set load = states('sensor.solis_s6_eh1p_yesterday_energy_consumption') | float(0) %}
+          {% set load = states('sensor.house_energy_yesterday') | float(0) %}
           {% if load > 0 %}
             {{ (states('sensor.energy_cost_yesterday') | float(0) / load) | round(4) }}
           {% else %}
@@ -858,9 +912,9 @@ template:
         unit_of_measurement: "%"
         state_class: measurement
         icon: mdi:home-lightning-bolt
-        availability: "{{ states('sensor.solis_s6_eh1p_household_load_today_energy') | float(0) > 0 }}"
+        availability: "{{ states('sensor.house_energy_today') | float(0) > 0 }}"
         state: >
-          {% set load = states('sensor.solis_s6_eh1p_household_load_today_energy') | float(1) %}
+          {% set load = states('sensor.house_energy_today') | float(1) %}
           {% set own = states('sensor.solis_s6_eh1p_today_battery_discharge_energy') | float(0)
                      + states('sensor.solar_today_kwh') | float(0) %}
           {{ [ (own / load * 100), 100 ] | min | round(1) }}
@@ -1209,4 +1263,4 @@ panel_custom:
     # work. Identical sizes mean the CDN is bypassing correctly and the query
     # could be dropped. Measured 2026-09-05: 29875 vs 40740 -- a full release
     # behind, with a `cache-control: max-age=28211` TTL counting down.
-    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.0
+    module_url: /hacsfiles/HA-App/energy-dashboard.js?v=0.9.1
