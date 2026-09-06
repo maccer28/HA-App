@@ -825,3 +825,13 @@ test('the effective-rate benchmark is read from the rate helper, not hardcoded',
     'it follows the helper when the rate changes');
   assert.equal(hint({}), 'yesterday, all-in', 'and drops the comparison rather than inventing one');
 });
+
+test('bars are thickness-capped so a single bucket does not fill the plot', () => {
+  // The per-tariff meters start life with exactly one day of data. Uncapped,
+  // Chart.js stretches that one bar across the plot and it reads as a broken
+  // block rather than as one day.
+  const js = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  const cap = /maxBarThickness:\s*(\d+)/.exec(js);
+  assert.ok(cap, 'a bar thickness cap is set');
+  assert.ok(Number(cap[1]) > 0 && Number(cap[1]) <= 80, 'and is a sane width');
+});

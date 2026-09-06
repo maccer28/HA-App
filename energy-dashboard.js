@@ -1194,6 +1194,11 @@ if (typeof HTMLElement !== 'undefined') {
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          // Without a cap, a chart holding one or two buckets stretches its
+          // bars across the whole plot and reads as a broken block rather than
+          // as a day's worth of data. The per-tariff meters start with exactly
+          // one bucket, so this is the normal first-day view.
+          maxBarThickness: 46,
           plugins: { legend: { labels: { color: '#b9c2d0', boxWidth: 10, boxHeight: 10, font: { size: 11 } } } },
           scales: {
             x: { stacked: true, ticks: { color: '#4d5666', maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
