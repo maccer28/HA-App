@@ -434,6 +434,9 @@ test('Live carries the headline figures; the ledger stays on Financial', () => {
   const fin = renderFinancialHTML(liveStates);
   assert.match(fin, /€312\.45/);
   assert.match(fin, /Net saving/);
+  // Performance lives on Live only; duplicating it gave neither tab a clear job
+  assert.doesNotMatch(fin, /Round trip|Full cycles|Payback/,
+    'the performance ratios belong to Live alone');
 });
 
 test('buildMoneyChain shows battery and solar separately, then nets them', () => {
@@ -581,8 +584,8 @@ test('the power-flow direction renders as its own element, not appended to the v
     'sensor.solis_s6_eh1p_battery_charge_power': { state: '0' },
     'sensor.solis_s6_eh1p_battery_discharge_power': { state: '357' },
   });
-  assert.match(html, /<span class="d">Import<\/span>/);
-  assert.match(html, /<span class="d">Discharging<\/span>/);
+  assert.match(html, /<span class="d"><i>\u2193<\/i>Import<\/span>/, 'import points down');
+  assert.match(html, /<span class="d"><i>\u25bc<\/i>Discharging<\/span>/, 'discharge points down');
   // and the figure itself must not carry the word
   assert.doesNotMatch(html, /357 W Discharging/);
 });
@@ -715,4 +718,28 @@ test('the money chart is capped and stays daily whatever range is picked', () =>
   const html = renderHistoryHTML({}, '2y');
   assert.match(html, /up to 90 days/, 'the cap is stated on the chart, not just enforced in code');
   assert.match(html, /only comparable within a rate regime/);
+});
+
+test('the lifetime saving outranks the ratios beside it', () => {
+  // It led the grid but was styled identically to "Peak import", so the number
+  // the system exists to produce read as one statistic among eight.
+  const css = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  const lead = /\.tiles > :first-child \.v \{[^}]*font-size:\s*clamp\((\d+)px/.exec(css);
+  const tile = /\.tile \.v \{[^}]*clamp\((\d+)px/.exec(css);
+  assert.ok(lead && tile, 'both tile sizes are declared');
+  assert.ok(Number(lead[1]) > Number(tile[1]) * 1.4,
+    `lead tile (${lead[1]}px) must clearly outrank the others (${tile[1]}px)`);
+  assert.match(css, /\.tiles > :first-child \{[^}]*grid-column: 1 \/ -1/, 'and span the row');
+});
+
+test('every direction has a glyph, and none share one within a node', () => {
+  const css = readFileSync(new URL('./energy-dashboard.js', import.meta.url), 'utf8');
+  const block = /const ARROW = \{([^}]*)\}/.exec(css)[1];
+  const pairs = [...block.matchAll(/(\w+):\s*'\\u([0-9a-f]{4})'/g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(pairs.map(p => p[0]).sort(), ['Charging', 'Discharging', 'Export', 'Idle', 'Import']);
+  // grid and battery each show two opposed directions -- those must not collide
+  const grid = pairs.filter(p => ['Import', 'Export'].includes(p[0])).map(p => p[1]);
+  const batt = pairs.filter(p => ['Charging', 'Discharging'].includes(p[0])).map(p => p[1]);
+  assert.notEqual(grid[0], grid[1], 'import and export need distinct glyphs');
+  assert.notEqual(batt[0], batt[1], 'charge and discharge need distinct glyphs');
 });

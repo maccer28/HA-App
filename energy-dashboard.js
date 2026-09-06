@@ -602,6 +602,17 @@ function renderStatRowsHTML(rows) {
   return rows.map(r => `<div class="stat"><span>${r.label}</span><b>${r.text}</b></div>`).join('');
 }
 
+// Direction glyphs. The word stays -- an arrow alone is ambiguous between a
+// grid and a battery node -- but the glyph is what the eye catches first, so
+// the caption becomes scannable rather than something you have to read.
+const ARROW = {
+  Import: '\u2193',
+  Export: '\u2191',
+  Charging: '\u25b2',
+  Discharging: '\u25bc',
+  Idle: '\u00b7',
+};
+
 function ribbonHTML(r) {
   const segs = r.segments
     .map(
@@ -634,7 +645,7 @@ export function renderLiveHTML(states, now = new Date()) {
       n => `<div class="node">
         <span class="k">${n.label}</span>
         <b class="v" style="color:${n.color}">${n.text}</b>
-        <span class="d">${n.direction || ''}</span>
+        <span class="d">${n.direction ? `<i>${ARROW[n.direction] || ''}</i>${n.direction}` : ''}</span>
       </div>`
     )
     .join('');
@@ -727,15 +738,7 @@ export function renderFinancialHTML(states) {
     )
     .join('');
 
-  const perf = buildPerformance(states)
-    .map(t => `<div class="tile"><span class="k">${t.label}</span><b class="v">${t.text}</b><span class="h">${t.hint}</span></div>`)
-    .join('');
-
   return `
-    <section class="card">
-      <h3>Performance</h3>
-      <div class="tiles">${perf}</div>
-    </section>
     <section class="card">
       <h3>How the saving is made</h3>
       ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
@@ -857,6 +860,7 @@ if (typeof HTMLElement !== 'undefined') {
             color: #7d8797; font: 500 10px Inter, system-ui, sans-serif;
             letter-spacing: 0.08em; text-transform: uppercase; min-height: 13px;
           }
+          .node .d i { font-style: normal; margin-right: 4px; font-size: 11px; }
           .node .v {
             font: 600 clamp(17px, 5vw, 21px) ui-monospace, 'JetBrains Mono', monospace;
             font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
@@ -864,6 +868,12 @@ if (typeof HTMLElement !== 'undefined') {
           }
 
           .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 14px; }
+          /* The first tile is the number the system exists to produce. It led
+             the grid but rendered at the same size as "Peak import", so it read
+             as one statistic among eight. */
+          .tiles > :first-child { grid-column: 1 / -1; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+          .tiles > :first-child .v { font-size: clamp(32px, 10vw, 44px); letter-spacing: -0.03em; color: #34d399; }
+          .tiles > :first-child .k { font-size: 11px; }
           .tiles > * { min-width: 0; }
           .tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
           .tile .k { color: #7d8797; font: 500 10px Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
