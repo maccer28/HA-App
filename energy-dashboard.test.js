@@ -30,6 +30,7 @@ import {
   alignSeries,
   formatDayLabel,
   formatBucketLabel,
+  barWidths,
   RANGES,
   findRange,
   renderRangesHTML,
@@ -181,7 +182,7 @@ test('formatters render a dash rather than a misleading zero for missing values'
   assert.equal(fmtNum(null, 1, 'V'), DASH);
 
   assert.equal(fmtEnergy(8.4), '8.40 kWh');
-  assert.equal(fmtEuro(-0.2), '€-0.20');
+  assert.equal(fmtEuro(-0.2), '\u2212€0.20', 'the sign goes outside the symbol, with a true minus');
   assert.equal(fmtNum(49.98, 2, 'Hz'), '49.98 Hz');
   assert.equal(fmtNum(5, 0, ''), '5');
 });
@@ -747,4 +748,32 @@ test('every direction has a glyph, and none share one within a node', () => {
   const batt = pairs.filter(p => ['Charging', 'Discharging'].includes(p[0])).map(p => p[1]);
   assert.notEqual(grid[0], grid[1], 'import and export need distinct glyphs');
   assert.notEqual(batt[0], batt[1], 'charge and discharge need distinct glyphs');
+});
+
+test('barWidths scales to the largest magnitude, sign-blind', () => {
+  // The bar shows size; colour and position carry the sign.
+  assert.deepEqual(barWidths([1.51, 0.16, -1.59]).map(Math.round), [95, 10, 100]);
+  assert.deepEqual(barWidths([0, 0, 0]), [0, 0, 0], 'a flat day must not divide by zero');
+  assert.deepEqual(barWidths([2, null]), [100, 0], 'a missing figure draws nothing');
+});
+
+test('the tariff rows diverge around a centre line', () => {
+  const html = renderFinancialHTML({
+    'sensor.saving_today_night_boost': { state: '-1.59' },
+    'sensor.saving_today_day': { state: '1.06' },
+  });
+  // Bars run from the centre, so the largest reaches 50% of the track -- half
+  // the width, all of its side.
+  assert.match(html, /right:50%;width:50%;background:#ef4a5a/, 'night boost spend fills its side, in red');
+  assert.match(html, /left:50%;width:33\.3[\d]*%;background:#34d399/, 'day return is proportional, in green');
+  assert.match(html, /\u2212€1\.59/);
+});
+
+test('Financial states each figure once', () => {
+  const detail = buildFinancialSummary({}).map(r => r.label);
+  const chain = buildMoneyChain({}).map(r => r.label);
+  // "Solar value" duplicated "Avoided by solar"; "Battery charge cost" was in both
+  assert.ok(!detail.includes('Solar value'), 'solar value is stated once, in the chain');
+  assert.ok(!detail.includes('Battery charge cost'), 'charge cost is stated once, in the chain');
+  assert.equal(chain.filter(l => detail.includes(l)).length, 0, 'no label appears in both blocks');
 });

@@ -70,8 +70,11 @@ export function fmtEnergy(kwh) {
   return kwh === null ? DASH : `${kwh.toFixed(2)} kWh`;
 }
 
+// The sign belongs outside the symbol: minus-EUR-one-fifty-nine, not
+// EUR-minus-one-fifty-nine. Uses a true minus sign, which aligns with digits.
 export function fmtEuro(v) {
-  return v === null ? DASH : `€${v.toFixed(2)}`;
+  if (v === null) return DASH;
+  return v < 0 ? `\u2212€${Math.abs(v).toFixed(2)}` : `€${v.toFixed(2)}`;
 }
 
 export function fmtNum(v, dp, unit) {
@@ -288,8 +291,6 @@ const FINANCIAL_SUMMARY = [
     'sensor.arbitrage_profit_yesterday',
     'sensor.total_arbitrage_profit',
   ],
-  ['Battery charge cost', 'sensor.battery_charge_cost_today', 'sensor.battery_charge_cost_yesterday', null],
-  ['Solar value', 'sensor.solar_value_today', 'sensor.solar_value_yesterday', null],
 ];
 
 export function buildFinancialSummary(states) {
@@ -345,12 +346,25 @@ const MONEY_CHAIN = [
 ];
 
 export function buildMoneyChain(states) {
-  return MONEY_CHAIN.map(([label, today, yesterday, op]) => ({
-    label,
-    op,
-    today: fmtEuro(numOrNull(states, today)),
-    yesterday: fmtEuro(numOrNull(states, yesterday)),
-  }));
+  return MONEY_CHAIN.map(([label, today, yesterday, op]) => {
+    const value = numOrNull(states, today);
+    return {
+      label,
+      op,
+      value,
+      today: fmtEuro(value),
+      yesterday: fmtEuro(numOrNull(states, yesterday)),
+    };
+  });
+}
+
+// Proportional bar widths for a set of values, scaled to the largest magnitude
+// present. Returns percentages so a row can show its size as well as its
+// number -- the shape of "paid 1.59 to save 1.67" is the point, and four
+// right-aligned figures do not convey it.
+export function barWidths(values) {
+  const max = Math.max(...values.map(v => Math.abs(v ?? 0)), 0);
+  return values.map(v => (max === 0 || v === null ? 0 : (Math.abs(v) / max) * 100));
 }
 
 // ─── History (long-term statistics) ───────────────────────────────────
@@ -731,35 +745,57 @@ export function renderHistoryHTML(states, rangeKey = '30d') {
 }
 
 export function renderFinancialHTML(states) {
-  const chain = buildMoneyChain(states)
-    .map(r => `<tr class="${r.op === '=' ? 'sum' : ''}"><td class="op">${r.op}</td><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td></tr>`)
+  const chainRows = buildMoneyChain(states);
+  const chainBars = barWidths(chainRows.filter(r => r.op !== '=').map(r => r.value));
+  let bi = 0;
+  const chain = chainRows
+    .map(r => {
+      const isSum = r.op === '=';
+      const w = isSum ? 0 : chainBars[bi++];
+      const tone = r.op === '\u2212' ? '#ef4a5a' : '#34d399';
+      return `<div class="line${isSum ? ' sum' : ''}">
+        <span class="op">${r.op}</span>
+        <span class="lbl">${r.label}</span>
+        <span class="bar">${isSum ? '' : `<i style="width:${w}%;background:${tone}"></i>`}</span>
+        <b class="amt">${r.today}</b>
+        <span class="was">${r.yesterday}</span>
+      </div>`;
+    })
     .join('');
   const detail = buildFinancialSummary(states)
     .map(r => `<tr><th scope="row">${r.label}</th><td class="num">${r.today}</td><td class="num">${r.yesterday}</td><td class="num">${r.total}</td></tr>`)
     .join('');
-  const periods = buildFinancialRows(states)
-    .map(
-      r => `<tr><th scope="row"><span class="dot" style="background:${TARIFF[r.key]}"></span>${r.period}</th>
-        <td class="num">${fmtEuro(r.todaySaving)}</td><td class="num">${fmtEuro(r.todayArbitrage)}</td>
-        <td class="num">${fmtEuro(r.lifetimeSaving)}</td><td class="num">${fmtEuro(r.lifetimeArbitrage)}</td></tr>`
-    )
+  const rows = buildFinancialRows(states);
+  const scale = Math.max(...rows.map(r => Math.abs(r.todaySaving)), 0.01);
+  const periods = rows
+    .map(r => {
+      const pct = (Math.abs(r.todaySaving) / scale) * 50;
+      const neg = r.todaySaving < 0;
+      return `<div class="span">
+        <span class="lbl"><i class="dot" style="background:${TARIFF[r.key]}"></i>${r.period}</span>
+        <span class="axis"><i style="${neg ? `right:50%` : `left:50%`};width:${pct}%;background:${neg ? '#ef4a5a' : '#34d399'}"></i></span>
+        <b class="amt">${fmtEuro(r.todaySaving)}</b>
+        <span class="was">${fmtEuro(r.lifetimeSaving)}</span>
+      </div>`;
+    })
     .join('');
 
   return `
     <section class="card">
-      <h3>How the saving is made</h3>
-      ${tableHTML(['', 'Metric', 'Today', 'Yesterday'], chain, 2)}
-      <p class="note"><b>Today runs negative until the battery discharges.</b> Charging is paid for at 02:00 and pays back from 08:00, so the day starts in deficit and recovers. Judge performance on yesterday.</p>
-      <p class="note">Avoided cost is what the energy your battery and solar supplied would have cost at the rate in force when you used it &mdash; so midday solar is valued at the day rate and late-afternoon solar at the peak rate. Take off what you paid to charge, and what is left is the saving.</p>
+      <h3>How the saving is made <em>today</em></h3>
+      <div class="lines">${chain}</div>
+      <p class="note">Bars are scaled to the largest figure. The right-hand column is yesterday, for comparison.</p>
+      <p class="note warn">Today runs negative until the battery discharges &mdash; charging is paid for at 02:00 and pays back from 08:00. Judge performance on yesterday.</p>
+    </section>
+    <section class="card">
+      <h3>By tariff period <em>today</em></h3>
+      <div class="lines">${periods}</div>
+      <p class="note">Left of centre is money going in, right is money coming back. Night Boost is negative by design; Day and Peak are where it returns. The right-hand column is the lifetime figure.</p>
     </section>
     <section class="card">
       <h3>Detail</h3>
       ${tableHTML(['Metric', 'Today', 'Yesterday', 'Lifetime'], detail)}
-    </section>
-    <section class="card">
-      <h3>By tariff period</h3>
-      ${tableHTML(['Period', 'Saving today', 'Arbitrage today', 'Saving lifetime', 'Arbitrage lifetime'], periods)}
-      <p class="note">Night Boost runs negative by design &mdash; energy goes in and none comes out. Day and Peak are where it comes back.</p>
+      <p class="note">Avoided cost values what your battery and solar supplied at the rate in force when you used it, so midday solar counts at the day rate and late-afternoon solar at the peak rate.</p>
     </section>
   `;
 }
@@ -953,6 +989,30 @@ if (typeof HTMLElement !== 'undefined') {
           .range:hover { color: #b9c2d0; border-color: rgba(255,255,255,0.2); }
           .range.on { background: rgba(230,235,242,0.1); border-color: #e6ebf2; color: #e6ebf2; }
           .range:focus-visible { outline: 2px solid #14b8a6; outline-offset: 2px; }
+          /* A row that carries its own size. Four right-aligned figures cannot
+             show that 1.59 went in to bring 1.67 back; a bar can. */
+          .lines { display: flex; flex-direction: column; }
+          .line, .span {
+            display: grid; align-items: center; gap: 10px;
+            grid-template-columns: 14px minmax(72px, 1fr) minmax(60px, 2fr) auto auto;
+            padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+          }
+          .span { grid-template-columns: minmax(72px, 1fr) minmax(80px, 2fr) auto auto; }
+          .line:last-child, .span:last-child { border-bottom: 0; }
+          .line .op { color: #4d5666; font: 500 13px ui-monospace, monospace; }
+          .line .lbl, .span .lbl { font: 500 13px Inter, system-ui, sans-serif; color: #b9c2d0; min-width: 0; }
+          .span .lbl { display: flex; align-items: center; gap: 8px; }
+          .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+          .bar, .axis { position: relative; height: 7px; background: rgba(255,255,255,0.05); border-radius: 4px; min-width: 0; }
+          .bar i { position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; }
+          .axis::before { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: rgba(255,255,255,0.18); }
+          .axis i { position: absolute; top: 0; height: 100%; border-radius: 4px; }
+          .amt { font: 600 14px ui-monospace, 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; text-align: right; min-width: 74px; }
+          .was { font: 500 12px ui-monospace, 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; color: #4d5666; text-align: right; min-width: 68px; }
+          .line.sum { border-top: 1px solid rgba(255,255,255,0.16); border-bottom: 0; margin-top: 4px; padding-top: 12px; }
+          .line.sum .lbl, .line.sum .op { color: #34d399; font-weight: 600; }
+          .line.sum .amt { color: #34d399; font-size: 17px; }
+
           .chart { position: relative; height: 220px; }
           .chart-empty {
             display: flex; align-items: center; justify-content: center; text-align: center;
