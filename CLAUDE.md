@@ -47,7 +47,10 @@ No token required. Runs in HA's JS context with full access to `hass` object.
 - sensor.solis_s6_eh1p_battery_power_net — battery W net (same convention)
 - sensor.solis_s6_eh1p_battery_soh — battery health %
 - sensor.solis_s6_eh1p_battery_voltage_bms / _current_bms — BMS-reported pair
-- sensor.solis_s6_eh1p_household_load_power — house load W
+- sensor.solis_s6_eh1p_household_load_power — house load W, **but Solis-serviced
+  only** (battery + grid through its own CTs); misses load the AC-coupled solar
+  covers, so it runs low by roughly the solar figure. Use sensor.true_house_load
+  for a whole-house number. Still fine for the History tab's energy "Home load".
 - sensor.solis_s6_eh1p_battery_soc — battery % (0-100)
 - sensor.solis_s6_eh1p_battery_voltage — battery V
 - sensor.solis_s6_eh1p_battery_current — battery A
@@ -171,6 +174,13 @@ power sensors update every ~20s and would suit a Riemann-sum integration.
   `sensor.solar_total_yield`). Use this instead of `sensor.solar_today`;
   it exists precisely so no consumer has to remember a `/1000`.
 - sensor.solar_yesterday_kwh — same, from those buckets' `last_period`.
+- sensor.true_house_load — whole-house draw in W: solar + grid net (signed) +
+  battery discharge − battery charge, clamped at 0. Exists because
+  `household_load_power` only meters what the Solis itself services and runs
+  ~235 W low against the sources (measured 2026-09-10), so the Live power-flow
+  strip never balanced. Residual against this is just battery DC→AC conversion
+  loss + inverter self-consumption (~7% of discharge). The panel's HOME node
+  reads this.
 - sensor.tariff_meter_drift_yesterday — summed grid-import `last_period` minus
   the inverter's own yesterday import. Should be ~0; persistent non-zero means
   the meters lost energy and yesterday under-counts by that many kWh.

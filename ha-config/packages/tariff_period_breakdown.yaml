@@ -1308,6 +1308,43 @@ template:
         state: >
           {{ (states('sensor.solar_today_kwh') | float(0) * states('input_number.rate_day') | float(0.3578)) | round(2) }}
 
+      # ─── TRUE HOUSE LOAD (what the whole house is actually drawing) ──
+      # sensor.solis_s6_eh1p_household_load_power only meters the load the
+      # Solis itself services through its own CTs -- battery and grid. Solar
+      # is a separate AC-coupled inverter that backfeeds the house AC bus
+      # downstream of those CTs, so the Solis never sees the load solar
+      # covers. Measured live 2026-09-10 over a minute: solar ~167 W, grid
+      # ~20 W, battery discharge ~223 W, but household_load_power ~170 W --
+      # a steady ~235 W short of the sources, almost exactly the solar
+      # figure, and NOT sampling jitter (all sensors updated together).
+      #
+      # This closes the balance by summing every metered flow into the AC
+      # bus: solar in, grid net (signed -- + import, - export), and battery
+      # via the two one-sided power sensors (each 0 when the other is
+      # active, so no battery_power sign question). The only residual left
+      # is battery DC->AC conversion loss plus inverter self-consumption,
+      # ~7% of discharge. The panel shows this as HOME so the flow strip
+      # balances; the raw Solis figure stays on the History tab as "Home
+      # load". Clamped at 0 -- heavy export/charge with conversion loss can
+      # push the arithmetic slightly negative, which is not a real load.
+      - name: "True House Load"
+        unique_id: true_house_load
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        icon: mdi:home-lightning-bolt
+        availability: >
+          {{ has_value('sensor.solar_power')
+            and has_value('sensor.solis_s6_eh1p_grid_power_net')
+            and has_value('sensor.solis_s6_eh1p_battery_charge_power')
+            and has_value('sensor.solis_s6_eh1p_battery_discharge_power') }}
+        state: >
+          {% set v = states('sensor.solar_power') | float(0)
+            + states('sensor.solis_s6_eh1p_grid_power_net') | float(0)
+            + states('sensor.solis_s6_eh1p_battery_discharge_power') | float(0)
+            - states('sensor.solis_s6_eh1p_battery_charge_power') | float(0) %}
+          {{ [v, 0] | max | round(0) }}
+
 automation:
   - alias: "Tariff Period Sync"
     id: tariff_period_sync

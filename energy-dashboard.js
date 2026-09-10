@@ -114,7 +114,14 @@ export function renderRowsHTML(rows) {
 export function buildPowerFlow(states) {
   const solar = numOrNull(states, 'sensor.solar_power');
   const grid = numOrNull(states, 'sensor.solis_s6_eh1p_grid_power_net');
-  const home = numOrNull(states, 'sensor.solis_s6_eh1p_household_load_power');
+  // Not sensor.solis_s6_eh1p_household_load_power: that only meters the load the
+  // Solis services through its own CTs (battery + grid), missing whatever the
+  // AC-coupled solar inverter covers downstream. Measured live it ran ~235 W
+  // short of solar + grid + battery, so the flow strip never balanced. The
+  // package derives true_house_load from every metered flow into the AC bus;
+  // see ha-config/packages/tariff_period_breakdown.yaml. The raw Solis figure
+  // still appears on the History tab as "Home load".
+  const home = numOrNull(states, 'sensor.true_house_load');
 
   const gridDirection = grid === null ? null : grid >= 0 ? 'Import' : 'Export';
 

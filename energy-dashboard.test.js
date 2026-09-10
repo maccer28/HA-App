@@ -129,7 +129,8 @@ const liveStates = {
   'sensor.solis_s6_eh1p_grid_power_net': { state: '-1200' },
   'sensor.solis_s6_eh1p_battery_charge_power': { state: '800' },
   'sensor.solis_s6_eh1p_battery_discharge_power': { state: '0' },
-  'sensor.solis_s6_eh1p_household_load_power': { state: '450' },
+  'sensor.true_house_load': { state: '450' },
+  'sensor.solis_s6_eh1p_household_load_power': { state: '410' },
 
   'sensor.current_tariff_period': { state: 'day' },
   'sensor.electricity_rate': { state: '0.3233' },
@@ -197,6 +198,21 @@ test('buildPowerFlow returns the four nodes with grid and battery direction', ()
   assert.equal(nodes[2].text, '800 W');
   assert.equal(nodes[2].direction, 'Charging');
   assert.equal(nodes[3].text, '450 W');
+});
+
+test('buildPowerFlow reads Home from sensor.true_house_load, not the Solis load sensor', () => {
+  // The Solis figure only meters battery + grid load and misses whatever the
+  // AC-coupled solar covers, so the strip never balanced. true_house_load is
+  // the package-derived whole-house figure; the raw Solis sensor (410 here)
+  // must not be what Home shows.
+  const nodes = buildPowerFlow(liveStates);
+  assert.equal(nodes[3].key, 'home');
+  assert.equal(nodes[3].text, '450 W');
+
+  const withoutDerived = buildPowerFlow({
+    'sensor.solis_s6_eh1p_household_load_power': { state: '410' },
+  });
+  assert.equal(withoutDerived[3].text, DASH);
 });
 
 test('buildPowerFlow reports grid import for a positive net and export for a negative one', () => {
